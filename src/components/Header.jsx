@@ -1,5 +1,28 @@
 import { useStore } from '../store'
 
+export function Logo({ className = 'w-7 h-7' }) {
+  return (
+    <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id="djwys-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#22d3ee" />
+          <stop offset="0.5" stopColor="#a78bfa" />
+          <stop offset="1" stopColor="#f472b6" />
+        </linearGradient>
+      </defs>
+      <circle cx="32" cy="32" r="27" fill="none" stroke="url(#djwys-g)" strokeWidth="5" />
+      <polyline
+        points="21,25 26.5,40 32,29 37.5,40 43,25"
+        fill="none"
+        stroke="#fafafa"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function StatusDot({ ok, label }) {
   return (
     <span className="flex items-center gap-1.5 text-[11px] text-zinc-400" title={label}>
@@ -17,11 +40,12 @@ export default function Header() {
 
   return (
     <header className="shrink-0 flex items-center justify-between px-4 lg:px-6 py-3 border-b border-white/10">
-      <div className="flex items-baseline gap-3">
+      <div className="flex items-center gap-2.5">
+        <Logo />
         <h1 className="font-display font-bold text-xl tracking-tight bg-gradient-to-r from-cyan-300 via-violet-300 to-pink-300 bg-clip-text text-transparent">
-          AI·DJ
+          DJ WYS
         </h1>
-        <span className="hidden md:inline text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+        <span className="hidden md:inline text-[11px] uppercase tracking-[0.2em] text-zinc-500 ml-1">
           virtual DJ booth
         </span>
       </div>

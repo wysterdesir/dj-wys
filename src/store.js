@@ -55,7 +55,7 @@ export const useStore = create(
       toast: null,
     }),
     {
-      name: 'aidj-v1',
+      name: 'djwys-v1',
       partialize: (s) => ({
         settings: s.settings,
         queue: s.queue,

@@ -1,6 +1,6 @@
 {
-  "name": "AI·DJ — virtual DJ booth",
-  "short_name": "AI·DJ",
+  "name": "DJ WYS — virtual DJ booth",
+  "short_name": "DJ WYS",
   "description": "An AI-powered virtual DJ that runs a continuous, dynamic set from YouTube Music, steered by natural conversation.",
   "start_url": "./",
   "scope": "./",

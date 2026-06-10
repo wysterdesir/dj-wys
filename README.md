@@ -1,4 +1,4 @@
-# AI·DJ — your AI-powered virtual DJ booth
+# DJ WYS — your AI-powered virtual DJ booth
 
 A web app that runs a **continuous, dynamic music set** for your event. Two decks, a crossfader, animated waveforms, and an AI DJ you steer by chatting naturally:
 
@@ -13,7 +13,7 @@ Works on laptop, tablet, and phone. Installable as an app (PWA). No backend, no 
 
 ## Quick start
 
-1. Open the app (your GitHub Pages URL, e.g. `https://YOUR-USERNAME.github.io/ai-dj/`).
+1. Open the app (your GitHub Pages URL, e.g. `https://YOUR-USERNAME.github.io/dj-wys/`).
 2. Click **▶ Load the demo set** and press play — that works with **zero setup**.
 3. For the real thing, add two free-tier keys in **Settings ⚙** (one-time, ~10 minutes — see below).
 4. Tell the DJ about your event in the chat. Run the party.
@@ -33,7 +33,7 @@ You can pick the brain model in Settings: Opus 4.8 (default, best), Sonnet 4.6 (
 
 ### 2. YouTube Data API key — track search
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) → create a project (e.g. `ai-dj`).
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) → create a project (e.g. `dj-wys`).
 2. **APIs & Services → Library** → search **"YouTube Data API v3"** → **Enable**.
 3. **APIs & Services → Credentials** → **Create credentials → API key** → copy the `AIza…` value.
 4. Recommended: click the key → **Application restrictions → Websites** → add `https://YOUR-USERNAME.github.io/*` (and `http://localhost:5174/*` for local dev). Under **API restrictions**, limit it to *YouTube Data API v3*.
@@ -63,15 +63,15 @@ The free quota allows ~100 fresh searches per day; the app caches results for 30
 
 ```bash
 npm install
-npm run dev        # http://localhost:5174/ai-dj/
+npm run dev        # http://localhost:5174/dj-wys/
 npm run build      # production build in dist/
 ```
 
 ### Deploy to GitHub Pages
 
-1. Create a **public repo named `ai-dj`** and push this code to `main`.
+1. Create a **public repo named `dj-wys`** and push this code to `main`.
 2. The included GitHub Action ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) builds and publishes Pages automatically on every push.
-3. Your app appears at `https://YOUR-USERNAME.github.io/ai-dj/`.
+3. Your app appears at `https://YOUR-USERNAME.github.io/dj-wys/`.
 
 > Using a different repo name? Change `base` in [vite.config.js](vite.config.js) to `'/your-repo-name/'`.
 

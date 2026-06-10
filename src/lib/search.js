@@ -8,7 +8,7 @@
 
 import { parseISODuration } from './time'
 
-const CACHE_KEY = 'aidj-search-cache-v1'
+const CACHE_KEY = 'djwys-search-cache-v1'
 const CACHE_TTL = 30 * 24 * 3600 * 1000 // 30 days
 
 let cache = null

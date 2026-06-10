@@ -33,7 +33,7 @@ function Bubble({ m }) {
           : 'self-start bg-gradient-to-br from-violet-400/15 to-cyan-400/10 border border-violet-300/10 text-zinc-100 rounded-bl-sm'
       }`}
     >
-      {!user && <span className="block text-[10px] tracking-[0.2em] text-violet-300/80 mb-1">AI·DJ</span>}
+      {!user && <span className="block text-[10px] tracking-[0.2em] text-violet-300/80 mb-1">DJ WYS</span>}
       {m.text}
     </div>
   )
