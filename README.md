@@ -71,7 +71,12 @@ npm run build      # production build in dist/
 
 1. Create a **public repo named `dj-wys`** and push this code to `main`.
 2. The included GitHub Action ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) builds and publishes Pages automatically on every push.
-3. Your app appears at `https://YOUR-USERNAME.github.io/dj-wys/`.
+3. **First push only:** if that run fails at `configure-pages` with *"Resource not accessible by integration"*, the workflow token wasn't allowed to create the Pages site. Enable it once — repo **Settings → Pages → Source: GitHub Actions**, or:
+   ```bash
+   gh api -X POST repos/YOUR-USERNAME/dj-wys/pages -f build_type=workflow
+   gh run rerun --failed -R YOUR-USERNAME/dj-wys
+   ```
+4. Your app appears at `https://YOUR-USERNAME.github.io/dj-wys/`.
 
 > Using a different repo name? Change `base` in [vite.config.js](vite.config.js) to `'/your-repo-name/'`.
 
