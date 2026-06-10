@@ -6,7 +6,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { useStore, uid, toast } from '../store'
 import * as engine from './engine'
 import * as sets from './sets'
-import { searchTrack, SearchError } from './search'
+import {
+  searchTrack,
+  SearchError,
+  libraryLookup,
+  libraryAdd,
+  lookupVideos,
+  plausibleMatch,
+  quotaUsedToday,
+} from './search'
 import { fmtTime } from './time'
 
 export const MODELS = [
@@ -38,6 +46,7 @@ CRAFT
 - When the host clearly says the night is over ("that's a wrap", "shut it down"), end_set fades the music out and archives the gig's setlist. If the signal is ambiguous, ask once before ending.
 
 TRACK PICKING
+- Search budget: each fresh lookup costs 1 of ~99 daily searches (live_state shows usage). Two ways to queue tracks for FREE: tracks resolved before this device come from the library automatically, and supplying a confident video_id verifies at ~1% of a search's cost. For well-known tracks whose official upload ID you know, ALWAYS include video_id. When usage runs high (80+), stick to library repeats and confident video_ids, and tell the host if you're getting constrained.
 - search_query format: "{artist} {title} official audio". For big visual moments use "official video" instead — the video shows on the decks.
 - Prefer original studio recordings unless the host asks for live/remix versions.
 - Mind explicit lyrics around family crowds — when kids are present search "{artist} {title} clean version".
@@ -58,6 +67,11 @@ const TRACK_PROPS = {
   },
   energy: { type: 'integer', description: 'Track energy: 1 chill … 5 peak dancefloor' },
   note: { type: 'string', description: 'Optional: why this track — shown to the host' },
+  video_id: {
+    type: 'string',
+    description:
+      "Optional: the official YouTube video ID (11 chars) for this exact track, ONLY if you are confident you know it. Verifying an ID costs ~1% of a search, so supplying correct IDs hugely stretches the daily search budget. A wrong ID is harmless — it falls back to a normal search.",
+  },
   start_at: {
     type: 'integer',
     description:
@@ -201,6 +215,7 @@ function stateBlock() {
     set_started: s.currentSet
       ? new Date(s.currentSet.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : null,
+    search_quota_used_today: `${quotaUsedToday()} of ~99 (resets midnight PT)`,
     local_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   }
   return `<live_state>\n${JSON.stringify(state, null, 1)}\n</live_state>`
@@ -230,15 +245,13 @@ function pushApi(msg) {
 
 // ------------------------------------------------------------------ tool execution
 
-async function resolveTrack(t) {
-  const key = S().settings.youtubeKey
-  const found = await searchTrack(t.search_query, key)
-  if (!found) return null
+function buildTrack(t, found, how) {
   return {
     videoId: found.videoId,
     title: t.title,
     artist: t.artist,
     ytTitle: found.title,
+    artistTitleHow: how, // 'library' | 'id' | 'search' — for the tool report
     channel: found.channel,
     durationSec: found.durationSec,
     energy: t.energy,
@@ -246,25 +259,67 @@ async function resolveTrack(t) {
     startAt: t.start_at,
     fadeOutAt: t.fade_out_at,
     query: t.search_query,
-    candidates: found.candidates,
+    candidates: found.candidates || [found.videoId],
+  }
+}
+
+// Resolution ladder: library (free) → DJ-supplied id, pre-verified in a
+// batched 1-unit lookup (idMap) → full search (~1 search of the daily ~99).
+async function resolveTrack(t, idMap) {
+  const hit = libraryLookup(t.artist, t.title)
+  if (hit) return buildTrack(t, hit, 'library')
+
+  if (t.video_id && idMap) {
+    const meta = idMap.get(t.video_id)
+    if (meta && plausibleMatch(t, meta)) {
+      libraryAdd(t.artist, t.title, meta)
+      return buildTrack(t, meta, 'id')
+    }
+  }
+
+  const key = S().settings.youtubeKey
+  const found = await searchTrack(t.search_query, key)
+  if (!found) return null
+  libraryAdd(t.artist, t.title, found)
+  return buildTrack(t, found, 'search')
+}
+
+// One cheap batched lookup for every DJ-supplied id that the library
+// doesn't already cover (whole batch ≈ 1 quota unit).
+async function verifyIdsFor(tracks) {
+  const need = tracks
+    .filter((t) => t.video_id && !libraryLookup(t.artist, t.title))
+    .map((t) => t.video_id)
+  if (need.length === 0) return new Map()
+  try {
+    return await lookupVideos(need, S().settings.youtubeKey)
+  } catch {
+    return new Map()
   }
 }
 
 async function execQueueTracks({ mode = 'append', tracks = [] }) {
   const lines = []
   const found = []
-  for (const t of tracks.slice(0, 12)) {
+  const list = tracks.slice(0, 12)
+  const idMap = await verifyIdsFor(list)
+  const tag = { library: 'from library, free', id: 'via your video_id, ~free', search: 'searched' }
+  for (const t of list) {
     try {
-      const r = await resolveTrack(t)
+      const r = await resolveTrack(t, idMap)
       if (r) {
         found.push(r)
-        lines.push(`OK: ${t.artist} — ${t.title} → "${r.ytTitle}" [${r.channel}] (${fmtTime(r.durationSec)})`)
+        lines.push(
+          `OK (${tag[r.artistTitleHow]}): ${t.artist} — ${t.title} → "${r.ytTitle}" [${r.channel}] (${fmtTime(r.durationSec)})`
+        )
       } else {
         lines.push(`NOT FOUND: ${t.artist} — ${t.title} (query: ${t.search_query})`)
       }
     } catch (e) {
       if (e instanceof SearchError && e.code === 'quota') {
-        lines.push(`SEARCH QUOTA EXHAUSTED — cannot search more tracks today. ${found.length} resolved so far.`)
+        lines.push(
+          `SEARCH QUOTA EXHAUSTED — no more searches today. ${found.length} resolved so far. You can still queue tracks from the library or with confident video_ids.`
+        )
         break
       }
       lines.push(`ERROR searching "${t.search_query}": ${e.message}`)
@@ -280,7 +335,8 @@ async function execQueueTracks({ mode = 'append', tracks = [] }) {
 
 async function execPlayNow(input) {
   try {
-    const r = await resolveTrack(input)
+    const idMap = await verifyIdsFor([input])
+    const r = await resolveTrack(input, idMap)
     if (!r) return `NOT FOUND: ${input.artist} — ${input.title}`
     engine.playNow(r)
     pushChat('event', `▶️ Now playing: ${r.artist} — ${r.title}`)

@@ -229,6 +229,7 @@ function loadOnDeck(deck, track, { andPlay = true } = {}) {
           title: track.title,
           durationSec: track.durationSec,
           energy: track.energy,
+          videoId: track.videoId,
         }
       : s.lastNowPlaying,
   }))

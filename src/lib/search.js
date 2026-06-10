@@ -65,6 +65,122 @@ export function quotaUsedToday() {
   }
 }
 
+// ---- track library: artist+title → known video, 0 quota forever ----------
+// Every successfully resolved track lands here, so repeat favorites (the
+// bread and butter of family gigs) never cost a search again.
+const LIB_KEY = 'djwys-library-v1'
+let lib = null
+
+const norm = (x) =>
+  String(x || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const libKey = (artist, title) => `${norm(artist)}|${norm(title)}`
+
+function loadLib() {
+  if (lib) return lib
+  try {
+    lib = JSON.parse(localStorage.getItem(LIB_KEY)) || {}
+  } catch {
+    lib = {}
+  }
+  return lib
+}
+
+function saveLib() {
+  try {
+    const entries = Object.entries(lib)
+    if (entries.length > 2000) {
+      entries.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0))
+      lib = Object.fromEntries(entries.slice(-1500))
+    }
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib))
+  } catch {
+    /* storage full — fine */
+  }
+}
+
+export function libraryLookup(artist, title) {
+  const hit = loadLib()[libKey(artist, title)]
+  return hit ? { ...hit } : null
+}
+
+export function libraryAdd(artist, title, result) {
+  if (!artist || !title || !result?.videoId) return
+  loadLib()[libKey(artist, title)] = {
+    videoId: result.videoId,
+    title: result.title,
+    channel: result.channel,
+    durationSec: result.durationSec,
+    candidates: result.candidates || [result.videoId],
+    ts: Date.now(),
+  }
+  saveLib()
+}
+
+export function librarySize() {
+  return Object.keys(loadLib()).length
+}
+
+// One-time per load: anything already in the queue/history/archives with a
+// videoId becomes a free library entry.
+export function seedLibrary(tracks) {
+  for (const t of tracks) {
+    if (t?.videoId && t.artist && t.title && !loadLib()[libKey(t.artist, t.title)]) {
+      libraryAdd(t.artist, t.title, {
+        videoId: t.videoId,
+        title: t.ytTitle || t.title,
+        channel: t.channel || '',
+        durationSec: t.durationSec,
+        candidates: t.candidates,
+      })
+    }
+  }
+}
+
+// ---- cheap ID verification: one videos.list (1 unit) for a whole batch ----
+export async function lookupVideos(ids, apiKey) {
+  const map = new Map()
+  const clean = [...new Set(ids.filter((id) => /^[\w-]{11}$/.test(id || '')))]
+  if (clean.length === 0 || !apiKey) return map
+  for (let i = 0; i < clean.length; i += 50) {
+    const chunk = clean.slice(i, i + 50)
+    const r = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${chunk.join(',')}&key=${apiKey}`
+    )
+    if (!r.ok) return map
+    const data = await r.json()
+    for (const v of data.items || []) {
+      map.set(v.id, {
+        videoId: v.id,
+        title: v.snippet?.title || '',
+        channel: v.snippet?.channelTitle || '',
+        durationSec: parseISODuration(v.contentDetails?.duration),
+        embeddable: v.status?.embeddable !== false,
+      })
+    }
+  }
+  return map
+}
+
+// Does this looked-up video plausibly match the track the DJ asked for?
+export function plausibleMatch(track, meta) {
+  if (!meta || meta.embeddable === false) return false
+  if (meta.durationSec < 60 || meta.durationSec > 900) return false
+  const hay = norm(`${meta.title} ${meta.channel}`)
+  const titleWords = norm(track.title).split(' ').filter((w) => w.length > 2)
+  const artistWords = norm(track.artist).split(' ').filter((w) => w.length > 2)
+  const titleHits = titleWords.filter((w) => hay.includes(w)).length
+  const titleOk = titleWords.length === 0 || titleHits >= Math.ceil(titleWords.length * 0.6)
+  const artistOk = artistWords.length === 0 || artistWords.some((w) => hay.includes(w))
+  return titleOk && artistOk
+}
+
 function score(item, query) {
   const q = query.toLowerCase()
   const title = item.title.toLowerCase()

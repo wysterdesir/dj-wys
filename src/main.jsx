@@ -7,11 +7,14 @@ createRoot(document.getElementById('root')).render(<App />)
 
 if (import.meta.env.DEV) {
   // dev console handle for poking at state
-  Promise.all([import('./store'), import('./lib/engine'), import('./lib/sets')]).then(
-    ([s, e, sets]) => {
-      window.__djwys = { store: s.useStore, engine: e, sets }
-    }
-  )
+  Promise.all([
+    import('./store'),
+    import('./lib/engine'),
+    import('./lib/sets'),
+    import('./lib/search'),
+  ]).then(([s, e, sets, search]) => {
+    window.__djwys = { store: s.useStore, engine: e, sets, search }
+  })
 }
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

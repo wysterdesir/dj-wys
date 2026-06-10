@@ -29,6 +29,7 @@ export function snapshotTracks() {
     title: t.title,
     durationSec: t.durationSec,
     energy: t.energy,
+    videoId: t.videoId, // keeps archived sets usable as free library seeds
   }))
 }
 

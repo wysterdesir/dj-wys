@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useStore } from './store'
 import * as engine from './lib/engine'
 import { initSetLifecycle } from './lib/sets'
+import { seedLibrary } from './lib/search'
 import Header from './components/Header'
 import Banner from './components/Banner'
 import Deck from './components/Deck'
@@ -149,9 +150,12 @@ export default function App() {
   const mobileTab = useStore((s) => s.mobileTab)
   const chatOpen = useStore((s) => s.chatOpen)
 
-  // gig lifecycle: ensure a set exists; auto-archive a stale previous gig
+  // gig lifecycle: ensure a set exists; auto-archive a stale previous gig;
+  // seed the free track library from everything we already know
   useEffect(() => {
     initSetLifecycle()
+    const s = useStore.getState()
+    seedLibrary([...s.queue, ...s.history, ...s.pastSets.flatMap((r) => r.tracks)])
   }, [])
 
   // transport keyboard shortcuts (ignored while typing)

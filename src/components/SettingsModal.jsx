@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore, toast } from '../store'
 import { MODELS, validateAnthropicKey } from '../lib/dj'
-import { validateYouTubeKey, quotaUsedToday } from '../lib/search'
+import { validateYouTubeKey, quotaUsedToday, librarySize } from '../lib/search'
 import { loadDemoSet } from '../lib/demo'
 import {
   startNewSet,
@@ -250,6 +250,10 @@ export default function SettingsModal() {
               </div>
             )
           })()}
+          <p className="text-[10px] leading-relaxed text-zinc-600 -mt-2">
+            Resets midnight Pacific. {librarySize()} tracks in your library play for free — the DJ
+            also supplies known video IDs, verified at ~1% of a search's cost.
+          </p>
         </section>
 
         <section className="flex flex-col gap-4">
