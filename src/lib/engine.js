@@ -16,6 +16,7 @@ const cuedFor = { A: null, B: null } // videoId pre-buffered on a deck
 const watch = { A: { p: -1, at: 0 }, B: { p: -1, at: 0 } } // stall watchdog
 let duckLevel = 1 // 1 = full, ~0.18 = talkover
 let duckRaf = null
+export const getDuckLevel = () => duckLevel
 
 const S = () => useStore.getState()
 const set = useStore.setState

@@ -9,17 +9,19 @@ const QUICK_PROMPTS = [
   '⚡ Bring the energy up!',
 ]
 
+// Deliberately muted palette: the booth is the show — the chat is just the
+// quiet headset conversation between host and DJ.
 function Bubble({ m }) {
   if (m.role === 'event') {
     return (
-      <div className="self-center text-[11px] text-zinc-500 bg-white/[0.04] border border-white/5 px-3 py-1 rounded-full max-w-[90%] text-center">
+      <div className="self-center text-[11px] text-zinc-600 bg-white/[0.03] border border-white/[0.04] px-3 py-1 rounded-full max-w-[90%] text-center">
         {m.text}
       </div>
     )
   }
   if (m.role === 'error') {
     return (
-      <div className="self-start max-w-[88%] text-xs text-red-200 bg-red-500/10 border border-red-400/20 rounded-2xl rounded-bl-sm px-3.5 py-2.5">
+      <div className="self-start max-w-[88%] text-xs text-red-200/90 bg-red-500/10 border border-red-400/20 rounded-2xl rounded-bl-sm px-3.5 py-2.5">
         {m.text}
       </div>
     )
@@ -27,13 +29,13 @@ function Bubble({ m }) {
   const user = m.role === 'user'
   return (
     <div
-      className={`max-w-[88%] text-sm leading-relaxed px-3.5 py-2.5 rounded-2xl whitespace-pre-wrap ${
+      className={`max-w-[88%] text-[13px] leading-relaxed px-3.5 py-2.5 rounded-2xl whitespace-pre-wrap ${
         user
-          ? 'self-end bg-white/10 text-zinc-100 rounded-br-sm'
-          : 'self-start bg-gradient-to-br from-violet-400/15 to-cyan-400/10 border border-violet-300/10 text-zinc-100 rounded-bl-sm'
+          ? 'self-end bg-white/[0.07] text-zinc-400 rounded-br-sm'
+          : 'self-start bg-white/[0.04] border border-white/[0.06] text-zinc-400 rounded-bl-sm'
       }`}
     >
-      {!user && <span className="block text-[10px] tracking-[0.2em] text-violet-300/80 mb-1">DJ WYS</span>}
+      {!user && <span className="block text-[10px] tracking-[0.2em] text-zinc-600 mb-1">DJ WYS</span>}
       {m.text}
     </div>
   )
@@ -77,7 +79,7 @@ export default function ChatSidebar() {
       <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-4 py-4 flex flex-col gap-2.5">
         {chat.length === 0 && (
           <div className="flex flex-col gap-3 mt-2">
-            <p className="text-sm text-zinc-400 leading-relaxed">
+            <p className="text-[13px] text-zinc-500 leading-relaxed">
               Tell me about tonight — the occasion, the crowd, the vibe — and I'll run the music
               while you run the party. 🎧
             </p>
@@ -86,7 +88,7 @@ export default function ChatSidebar() {
                 <button
                   key={q}
                   onClick={() => hasKey && sendToDJ(q)}
-                  className="text-left text-xs text-zinc-300 border border-white/10 hover:border-violet-400/40 hover:bg-violet-400/5 rounded-xl px-3 py-2.5 transition"
+                  className="text-left text-xs text-zinc-500 border border-white/[0.08] hover:border-white/25 hover:text-zinc-300 hover:bg-white/[0.03] rounded-xl px-3 py-2.5 transition"
                 >
                   {q}
                 </button>
@@ -98,11 +100,11 @@ export default function ChatSidebar() {
           <Bubble key={m.id} m={m} />
         ))}
         {aiBusy && (
-          <div className="self-start text-xs text-zinc-500 italic px-1 flex items-center gap-2">
+          <div className="self-start text-xs text-zinc-600 italic px-1 flex items-center gap-2">
             <span className="flex gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-300 animate-bounce [animation-delay:0ms]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-300 animate-bounce [animation-delay:120ms]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-300 animate-bounce [animation-delay:240ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce [animation-delay:0ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce [animation-delay:120ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce [animation-delay:240ms]" />
             </span>
             digging the crates…
           </div>
@@ -131,12 +133,12 @@ export default function ChatSidebar() {
           onKeyDown={(e) => e.key === 'Enter' && send()}
           placeholder={hasKey ? 'Talk to your DJ…' : 'Add your API key first…'}
           disabled={!hasKey}
-          className="flex-1 bg-white/[0.06] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-violet-400/50 disabled:opacity-50"
+          className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-white/25 disabled:opacity-50"
         />
         <button
           onClick={send}
           disabled={!hasKey || !input.trim() || aiBusy}
-          className="shrink-0 w-11 rounded-xl bg-gradient-to-br from-cyan-400/80 to-violet-400/80 text-black font-bold disabled:opacity-30 active:scale-95 transition"
+          className="shrink-0 w-11 rounded-xl bg-white/[0.08] text-zinc-400 hover:bg-white/15 hover:text-zinc-200 font-bold disabled:opacity-30 active:scale-95 transition"
           aria-label="Send"
         >
           ➤

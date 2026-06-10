@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react'
 import { useStore } from '../store'
 import * as engine from '../lib/engine'
+import { amplitudeAt } from './Waveform'
 
 const Icon = {
   Prev: () => (
@@ -22,6 +24,73 @@ const Icon = {
       <path d="M16 5h2v14h-2zM4 5v14l10.5-7z" />
     </svg>
   ),
+}
+
+// Channel VU meters. The signal is the simulated waveform level at the
+// playhead, but the GAIN is real — crossfader, channel faders, master and
+// talkover ducking all move these bars exactly like the audible volume.
+function VUMeter() {
+  const ref = useRef(null)
+  useEffect(() => {
+    const cv = ref.current
+    const ctx = cv.getContext('2d')
+    const level = { A: 0, B: 0 }
+    let raf
+    const SEG = 14
+    const draw = (t) => {
+      const s = useStore.getState()
+      const W = cv.clientWidth
+      const H = cv.clientHeight
+      if (W === 0) {
+        raf = requestAnimationFrame(draw)
+        return
+      }
+      if (cv.width !== W * 2 || cv.height !== H * 2) {
+        cv.width = W * 2
+        cv.height = H * 2
+      }
+      ctx.clearRect(0, 0, cv.width, cv.height)
+      const duck = engine.getDuckLevel()
+      const gain = {
+        A: Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master * duck,
+        B: Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master * duck,
+      }
+      ;['A', 'B'].forEach((k, col) => {
+        const d = s.decks[k]
+        const playing = d.state === 'playing'
+        const frac = d.duration > 0 ? d.progress / d.duration : 0
+        const target = playing
+          ? amplitudeAt(d.track?.videoId, frac, d.track?.energy ?? 3, t + (k === 'B' ? 90 : 0)) *
+            gain[k]
+          : 0
+        level[k] = Math.max(target, level[k] * 0.88) // fast attack, slow release
+        const segH = cv.height / SEG
+        const x = col === 0 ? 0 : cv.width * 0.56
+        const w = cv.width * 0.44
+        for (let i = 0; i < SEG; i++) {
+          const lit = level[k] >= ((i + 1) / SEG) * 0.95
+          const y = cv.height - (i + 1) * segH
+          const color = i >= SEG - 2 ? '#f87171' : i >= SEG - 5 ? '#fbbf24' : '#34d399'
+          ctx.fillStyle = lit ? color : 'rgba(255,255,255,0.06)'
+          ctx.beginPath()
+          ctx.roundRect(x, y + segH * 0.2, w, segH * 0.6, 3)
+          ctx.fill()
+        }
+      })
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <canvas ref={ref} className="w-14 h-24" />
+      <div className="flex w-14 justify-between px-0.5 text-[9px] font-semibold">
+        <span className="text-cyan-300/70">A</span>
+        <span className="text-pink-300/70">B</span>
+      </div>
+    </div>
+  )
 }
 
 function EnergyMeter() {
@@ -72,7 +141,7 @@ export default function Mixer() {
         : 'press play to start the set'
 
   return (
-    <section className="w-full lg:w-64 shrink-0 flex flex-col justify-center gap-5 glass rounded-3xl px-5 py-6 my-2">
+    <section className="w-full lg:w-72 shrink-0 lg:self-center flex flex-col gap-5 glass rounded-3xl px-5 py-6 my-2">
       <EnergyMeter />
 
       {/* transport */}
@@ -106,6 +175,11 @@ export default function Mixer() {
 
       <div className="text-center text-[11px] text-zinc-500 min-h-[1rem] truncate px-1" title={status}>
         {status}
+      </div>
+
+      {/* channel meters */}
+      <div className="flex justify-center">
+        <VUMeter />
       </div>
 
       {/* crossfader */}

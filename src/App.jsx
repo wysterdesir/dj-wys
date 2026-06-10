@@ -35,6 +35,34 @@ function MobileTabBar() {
   )
 }
 
+// ambient room lighting: the page itself leans toward the live deck's color
+function StageGlow() {
+  const active = useStore((s) => s.active)
+  const playing = useStore((s) => s.decks[s.active].state === 'playing')
+  return (
+    <div className="fixed inset-0 -z-10 pointer-events-none">
+      <div
+        className={`absolute inset-0 transition-opacity duration-[2000ms] ${
+          playing && active === 'A' ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{
+          background:
+            'radial-gradient(1100px 800px at 20% 40%, rgba(34,211,238,0.09), transparent 65%)',
+        }}
+      />
+      <div
+        className={`absolute inset-0 transition-opacity duration-[2000ms] ${
+          playing && active === 'B' ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{
+          background:
+            'radial-gradient(1100px 800px at 80% 40%, rgba(244,114,182,0.09), transparent 65%)',
+        }}
+      />
+    </div>
+  )
+}
+
 // slim now-playing bar for the mobile Queue/Chat tabs — never fly blind
 function NowPlayingBar() {
   const decks = useStore((s) => s.decks)
@@ -159,6 +187,7 @@ export default function App() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden no-select">
+      <StageGlow />
       <Header />
 
       <div className="flex flex-1 min-h-0">
@@ -169,7 +198,7 @@ export default function App() {
           } lg:flex`}
         >
           <div className="flex-1 min-h-0 overflow-y-auto thin-scroll lg:overflow-visible">
-            <div className="flex flex-col lg:flex-row items-stretch gap-4 px-4 lg:px-6 py-3 lg:h-full">
+            <div className="flex flex-col lg:flex-row items-stretch gap-4 xl:gap-10 px-4 lg:px-8 py-3 lg:h-full w-full max-w-[1880px] mx-auto">
               <Deck deck="A" />
               <Mixer />
               <Deck deck="B" />

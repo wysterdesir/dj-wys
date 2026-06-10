@@ -25,6 +25,25 @@ function mulberry32(seed) {
 
 const N = 72
 
+// Simulated signal level at the playhead — used by the mixer's VU meters.
+// Same seeded math as the bars, so meters and waveform agree.
+export function amplitudeAt(videoId, frac, energy = 3, t = 0) {
+  if (!videoId) return 0
+  const rnd = mulberry32(hashStr(videoId))
+  const idx = Math.max(0, Math.min(N - 1, Math.floor(frac * N)))
+  let v = 0
+  for (let i = 0; i <= idx; i++) {
+    const b = 0.3 + 0.7 * rnd()
+    if (i === idx) {
+      const x = i / N
+      const intro = Math.min(1, x / 0.07)
+      const outro = Math.min(1, (1 - x) / 0.1)
+      v = b * intro * outro * (0.35 + energy * 0.13)
+    }
+  }
+  return Math.min(1, v * (0.8 + 0.35 * Math.abs(Math.sin(t / 170))))
+}
+
 export default function Waveform({ videoId, progress, duration, playing, energy = 3, color }) {
   const ref = useRef(null)
   const live = useRef({})
@@ -89,5 +108,5 @@ export default function Waveform({ videoId, progress, duration, playing, energy 
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  return <canvas ref={ref} className="w-full h-12 block" />
+  return <canvas ref={ref} className="w-full h-12 lg:h-16 block" />
 }

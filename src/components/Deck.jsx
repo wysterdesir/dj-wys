@@ -81,10 +81,18 @@ export default function Deck({ deck }) {
         {...dropHandlers}
         className={
           platter
-            ? 'relative w-full max-w-[280px] lg:max-w-[330px] aspect-square mx-auto'
-            : 'relative w-full max-w-[560px] mx-auto aspect-video'
+            ? 'relative w-full max-w-[280px] lg:max-w-[min(42vh,500px)] aspect-square mx-auto'
+            : 'relative w-full max-w-[560px] lg:max-w-[680px] mx-auto aspect-video'
         }
       >
+        {/* stage light: the live deck radiates its color */}
+        <div
+          className="absolute -inset-12 rounded-full blur-3xl transition-opacity duration-1000 pointer-events-none"
+          style={{
+            background: `radial-gradient(circle, ${c.glow} 0%, transparent 70%)`,
+            opacity: isLive && playing ? 0.4 : 0,
+          }}
+        />
         {platter && (
           <>
             <div
@@ -158,6 +166,17 @@ export default function Deck({ deck }) {
               otherwise swallow (we drive playback via the API, controls=0) */}
           <div className="absolute inset-0" />
 
+          {/* vinyl read: edge vignette + faint grooves over the spinning video */}
+          {platter && d.track && (
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none"
+              style={{
+                background:
+                  'radial-gradient(circle, transparent 54%, rgba(0,0,0,0.25) 78%, rgba(0,0,0,0.55) 100%), repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0 1px, transparent 1px 6px)',
+              }}
+            />
+          )}
+
           {/* empty deck: preview what's up next (on the deck that will receive it) */}
           {!d.track &&
             (nextTrack && (deck === active || activeDeckHasTrack) ? (
@@ -200,11 +219,13 @@ export default function Deck({ deck }) {
       </div>
 
       {/* track info */}
-      <div className="text-center px-2 min-h-[2.6rem]">
+      <div className="text-center px-2 min-h-[2.6rem] lg:min-h-[3.6rem]">
         {d.track ? (
           <>
-            <div className="font-medium text-sm text-zinc-100 truncate">{d.track.title}</div>
-            <div className="text-xs text-zinc-500 truncate">{d.track.artist}</div>
+            <div className="font-display font-semibold text-sm lg:text-xl text-zinc-100 truncate">
+              {d.track.title}
+            </div>
+            <div className="text-xs lg:text-sm text-zinc-500 truncate">{d.track.artist}</div>
           </>
         ) : (
           <div className="text-xs text-zinc-600 italic">
