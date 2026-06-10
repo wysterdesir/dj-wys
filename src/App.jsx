@@ -66,6 +66,30 @@ function StageGlow() {
   )
 }
 
+// docked tab on the screen edge while the chat is collapsed (desktop) —
+// one click brings the DJ back; the dot means it said something meanwhile
+function ChatDock() {
+  const chatOpen = useStore((s) => s.chatOpen)
+  const unread = useStore((s) => s.chat.length > s.chatSeenLen)
+  if (chatOpen) return null
+  return (
+    <button
+      onClick={() => useStore.setState({ chatOpen: true })}
+      title="Open DJ chat (C)"
+      className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 flex-col items-center gap-2 py-4 px-1.5 rounded-l-xl bg-black/70 backdrop-blur border border-r-0 border-white/15 text-zinc-500 hover:text-white hover:bg-black/90 transition-colors"
+    >
+      <span className="text-[10px] leading-none">◀</span>
+      <span
+        className="text-[10px] font-semibold tracking-[0.3em]"
+        style={{ writingMode: 'vertical-rl' }}
+      >
+        DJ CHAT
+      </span>
+      {unread && <span className="w-2 h-2 rounded-full bg-violet-400 pulse-soft" />}
+    </button>
+  )
+}
+
 // slim now-playing bar for the mobile Queue/Chat tabs — never fly blind
 function NowPlayingBar() {
   const decks = useStore((s) => s.decks)
@@ -149,6 +173,12 @@ function Toast() {
 export default function App() {
   const mobileTab = useStore((s) => s.mobileTab)
   const chatOpen = useStore((s) => s.chatOpen)
+  const chatLen = useStore((s) => s.chat.length)
+
+  // while the chat is open, everything counts as read
+  useEffect(() => {
+    if (chatOpen) useStore.setState({ chatSeenLen: chatLen })
+  }, [chatOpen, chatLen])
 
   // gig lifecycle: ensure a set exists; auto-archive a stale previous gig;
   // seed the free track library from everything we already know
@@ -189,6 +219,10 @@ export default function App() {
         case 'T':
           engine.toggleDuck(!s.ducked)
           break
+        case 'c':
+        case 'C':
+          useStore.setState({ chatOpen: !s.chatOpen })
+          break
         default:
       }
     }
@@ -226,16 +260,19 @@ export default function App() {
           <QueuePanel variant="page" />
         </section>
 
-        {/* chat: sidebar on desktop, tab page on mobile */}
+        {/* chat: sliding sidebar on desktop, tab page on mobile */}
         <aside
-          className={`${mobileTab === 'chat' ? 'flex' : 'hidden'} flex-1 min-w-0 lg:min-w-0 ${
-            chatOpen ? 'lg:flex' : 'lg:hidden'
-          } lg:flex-none lg:w-[380px] lg:border-l lg:border-white/10`}
+          className={`${mobileTab === 'chat' ? 'flex' : 'hidden'} flex-1 min-w-0 lg:flex lg:flex-none lg:min-w-0 lg:overflow-hidden lg:transition-[width] lg:duration-300 lg:ease-out ${
+            chatOpen ? 'lg:w-[380px] lg:border-l lg:border-white/10' : 'lg:w-0'
+          }`}
         >
-          <ChatSidebar />
+          <div className="flex flex-1 min-w-0 lg:min-w-[380px] lg:w-[380px]">
+            <ChatSidebar />
+          </div>
         </aside>
       </div>
 
+      <ChatDock />
       <NowPlayingBar />
       <MobileTabBar />
       <SettingsModal />

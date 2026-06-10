@@ -73,6 +73,14 @@ export default function ChatSidebar() {
         />
         <h2 className="text-[11px] font-semibold tracking-[0.25em] text-zinc-300">DJ BOOTH</h2>
         <span className="text-[10px] text-zinc-600 truncate">{modelShort}</span>
+        <div className="flex-1" />
+        <button
+          onClick={() => useStore.setState({ chatOpen: false })}
+          title="Collapse chat — let the booth breathe (C)"
+          className="hidden lg:grid w-6 h-6 place-items-center rounded-md text-zinc-600 hover:text-zinc-200 hover:bg-white/5 text-sm leading-none"
+        >
+          »
+        </button>
       </div>
 
       {/* messages */}

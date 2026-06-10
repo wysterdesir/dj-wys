@@ -60,6 +60,7 @@ export const useStore = create(
       // ---------- ui ----------
       settingsOpen: false,
       chatOpen: true,
+      chatSeenLen: 0, // for the unread dot while the chat is collapsed
       mobileTab: 'decks', // decks | queue | chat
       toast: null,
     }),
@@ -79,6 +80,7 @@ export const useStore = create(
         pastSets: s.pastSets.slice(0, 50),
         lastActiveAt: s.lastActiveAt,
         lastNowPlaying: s.lastNowPlaying,
+        chatOpen: s.chatOpen,
       }),
     }
   )
