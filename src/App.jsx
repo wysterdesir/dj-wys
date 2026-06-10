@@ -119,18 +119,18 @@ function NowPlayingBar() {
   )
 }
 
-function TapOverlay() {
+// Last-resort autoplay nudge: a small pill, never a blocking overlay — the
+// engine recovers silently (retry → muted start + unmute) before this shows.
+function AutoplayNudge() {
   const needsTap = useStore((s) => s.needsTap)
   if (!needsTap) return null
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center">
-      <button
-        onClick={() => engine.resumeFromTap()}
-        className="px-8 py-5 rounded-2xl bg-white text-black font-display font-semibold text-lg shadow-[0_0_60px_rgba(34,211,238,0.4)]"
-      >
-        ▶ &nbsp;Tap to keep the music going
-      </button>
-    </div>
+    <button
+      onClick={() => engine.resumeFromTap()}
+      className="fixed left-1/2 -translate-x-1/2 bottom-24 lg:bottom-44 z-40 flex items-center gap-2 pl-3.5 pr-4.5 py-2.5 rounded-full bg-black/85 backdrop-blur border border-amber-300/40 text-amber-200 text-sm shadow-2xl hover:bg-black active:scale-95 transition"
+    >
+      🔇 Tap to resume the music
+    </button>
   )
 }
 
@@ -229,7 +229,7 @@ export default function App() {
       <NowPlayingBar />
       <MobileTabBar />
       <SettingsModal />
-      <TapOverlay />
+      <AutoplayNudge />
       <Toast />
     </div>
   )

@@ -8,14 +8,39 @@ import { acquireWakeLock, releaseWakeLock } from './wakelock'
 
 const players = { A: null, B: null }
 let ticker = null
-let fadeAnim = null
-let unlockedB = false
+const primed = { A: false, B: false } // deck iframes blessed for autoplay
+
+// ---- background-safe animation pump ------------------------------------
+// rAF freezes in hidden tabs, so every fade is a time-based stepper pumped
+// from BOTH a rAF loop (smooth when visible) and the 400ms engine tick
+// (keeps crossfades completing when the tab is backgrounded mid-party —
+// audible tabs are exempt from deep timer throttling).
+const anims = new Set()
+let animRaf = null
+function pumpAnims() {
+  if (anims.size === 0) return
+  const now = performance.now()
+  for (const fn of [...anims]) {
+    if (fn(now)) anims.delete(fn)
+  }
+}
+function addAnim(fn) {
+  anims.add(fn)
+  if (!animRaf) {
+    const loop = () => {
+      pumpAnims()
+      animRaf = anims.size ? requestAnimationFrame(loop) : null
+    }
+    animRaf = requestAnimationFrame(loop)
+  }
+  return fn
+}
 let lastRefillAt = 0
 let refillErrorUntil = 0
 const cuedFor = { A: null, B: null } // videoId pre-buffered on a deck
 const watch = { A: { p: -1, at: 0 }, B: { p: -1, at: 0 } } // stall watchdog
 let duckLevel = 1 // 1 = full, ~0.18 = talkover
-let duckRaf = null
+let duckStepper = null
 export const getDuckLevel = () => duckLevel
 
 const S = () => useStore.getState()
@@ -70,6 +95,7 @@ function onStateChange(deck, ytState) {
   if (!next) return
   set((s) => ({ decks: { ...s.decks, [deck]: { ...s.decks[deck], state: s.decks[deck].track ? next : 'empty' } } }))
   if (ytState === YTState.PLAYING) {
+    primed[deck] = true // it played — the iframe is trusted from here on
     set({ needsTap: false })
     if (S().settings.wakeLock) acquireWakeLock()
     // pick up the real duration once known
@@ -123,20 +149,25 @@ export function applyVolumes() {
 // Talkover: smoothly dip the music under speech and bring it back.
 export function toggleDuck(on) {
   set({ ducked: !!on })
-  if (duckRaf) cancelAnimationFrame(duckRaf)
+  if (duckStepper) {
+    anims.delete(duckStepper)
+    duckStepper = null
+  }
   const target = on ? 0.18 : 1
   const from = duckLevel
   const t0 = performance.now()
   const dur = 700
-  const step = (t) => {
+  duckStepper = addAnim((t) => {
     const k = Math.min(1, (t - t0) / dur)
     const e = k * k * (3 - 2 * k)
     duckLevel = from + (target - from) * e
     applyVolumes()
-    if (k < 1) duckRaf = requestAnimationFrame(step)
-    else duckRaf = null
-  }
-  duckRaf = requestAnimationFrame(step)
+    if (k >= 1) {
+      duckStepper = null
+      return true
+    }
+    return false
+  })
 }
 
 export function setXfade(x) {
@@ -153,10 +184,11 @@ export function setMaster(v) {
   applyVolumes()
 }
 
+let xfadeStepper = null
 function cancelFadeAnim() {
-  if (fadeAnim) {
-    cancelAnimationFrame(fadeAnim)
-    fadeAnim = null
+  if (xfadeStepper) {
+    anims.delete(xfadeStepper)
+    xfadeStepper = null
   }
 }
 
@@ -165,20 +197,19 @@ function animateXfade(target, seconds, onDone) {
   const from = S().xfade
   const t0 = performance.now()
   const dur = Math.max(0.2, seconds) * 1000
-  const step = (t) => {
+  xfadeStepper = addAnim((t) => {
     const k = Math.min(1, (t - t0) / dur)
     // smoothstep easing for a hand-on-the-fader feel
     const e = k * k * (3 - 2 * k)
     set({ xfade: from + (target - from) * e })
     applyVolumes()
-    if (k < 1) {
-      fadeAnim = requestAnimationFrame(step)
-    } else {
-      fadeAnim = null
+    if (k >= 1) {
+      xfadeStepper = null
       onDone?.()
+      return true
     }
-  }
-  fadeAnim = requestAnimationFrame(step)
+    return false
+  })
 }
 
 // ---------------------------------------------------------------- loading
@@ -213,6 +244,7 @@ export function startTicker() {
 }
 
 function tick() {
+  pumpAnims() // backstop: fades keep moving even when rAF is frozen (hidden tab)
   const s = S()
   // progress updates + watchdog bookkeeping
   for (const deck of ['A', 'B']) {
@@ -321,7 +353,7 @@ export function beginTransition({ fade } = {}) {
     queue: s.queue.slice(1),
   })
   loadOnDeck(to, next)
-  detectBlockedAutoplay(to)
+  ensurePlaybackStarts(to)
 
   animateXfade(to === 'B' ? 1 : 0, seconds, () => finishTransition(from, to))
   return true
@@ -340,16 +372,40 @@ function finishTransition(from, to) {
   applyVolumes()
 }
 
-// If a mobile browser blocked programmatic playback, surface a tap target.
-function detectBlockedAutoplay(deck) {
+// Autoplay recovery ladder — keeps the music flowing without ever blocking
+// the screen: gentle retry → muted start + unmute (browsers always allow a
+// muted play) → only as a true last resort, a small non-blocking nudge pill.
+// PAUSED counts as fine: a manual pause must never be fought.
+function ensurePlaybackStarts(deck) {
+  const vid = S().decks[deck].track?.videoId
+  if (!vid) return
+  const same = () => S().decks[deck].track?.videoId === vid
+  const fine = () => {
+    const st = safe(players[deck], 'getPlayerState')
+    return (
+      st === YTState.PLAYING ||
+      st === YTState.BUFFERING ||
+      st === YTState.PAUSED ||
+      st === YTState.ENDED
+    )
+  }
   setTimeout(() => {
-    const d = S().decks[deck]
-    if (!d.track) return
-    const yts = safe(players[deck], 'getPlayerState')
-    if (yts !== YTState.PLAYING && yts !== YTState.BUFFERING) {
-      set({ needsTap: true })
-    }
-  }, 1800)
+    if (!same() || fine()) return
+    safe(players[deck], 'playVideo')
+    setTimeout(() => {
+      if (!same() || fine()) return
+      safe(players[deck], 'mute')
+      safe(players[deck], 'playVideo')
+      setTimeout(() => {
+        if (!same()) return
+        safe(players[deck], 'unMute')
+        applyVolumes()
+        const stillMuted = safe(players[deck], 'isMuted')
+        if (!fine() || stillMuted === true) set({ needsTap: true })
+        else primed[deck] = true
+      }, 800)
+    }, 1600)
+  }, 2000)
 }
 
 export function resumeFromTap() {
@@ -359,26 +415,26 @@ export function resumeFromTap() {
   set({ needsTap: false })
 }
 
-// Mobile audio unlock: a user gesture "blesses" both players once.
-function unlockDeckB() {
-  if (unlockedB || !players.B) return
-  const s = S()
-  if (s.decks.B.track) {
-    unlockedB = true
-    return // it already has content; first gesture-play covers it
-  }
-  unlockedB = true
+// One-time per deck: a brief MUTED blink of real playback issued inside a
+// user gesture earns the iframe lasting autoplay permission, so every later
+// programmatic transition starts without asking anything of the user.
+// Invisible (the stage is hidden while the deck has no store track) and
+// inaudible (muted, and the idle deck's crossfade gain is 0 anyway).
+function primeDeck(deck, videoId) {
+  if (primed[deck] || !players[deck] || !videoId) return
+  if (S().decks[deck].track) return // deck is in use — it blesses itself
+  primed[deck] = true
   try {
-    players.B.mute()
-    // play/pause on an empty player is a no-op but still registers the gesture
-    players.B.playVideo?.()
+    players[deck].mute()
+    players[deck].loadVideoById({ videoId, startSeconds: 0 })
     setTimeout(() => {
-      safe(players.B, 'pauseVideo')
-      safe(players.B, 'unMute')
+      safe(players[deck], 'stopVideo')
+      safe(players[deck], 'unMute')
+      cuedFor[deck] = null
       applyVolumes()
-    }, 250)
+    }, 650)
   } catch {
-    /* fine */
+    primed[deck] = false
   }
 }
 
@@ -394,7 +450,7 @@ export function togglePlay() {
     if (s.transition) safe(players[other(s.active)], 'pauseVideo')
     releaseWakeLock()
   } else {
-    unlockDeckB()
+    primeDeck(other(s.active), s.queue[0]?.videoId)
     safe(players[s.active], 'playVideo')
     if (s.transition) safe(players[other(s.active)], 'playVideo')
   }
@@ -408,7 +464,8 @@ export function startSet() {
     toast('Queue is empty — ask the DJ for music, or load the demo set in Settings')
     return
   }
-  unlockDeckB()
+  // this call sits inside the user's gesture — bless the idle deck too
+  primeDeck(other(s.active), s.queue[1]?.videoId || next.videoId)
   set({ queue: s.queue.slice(1), started: true, xfade: s.active === 'B' ? 1 : 0 })
   loadOnDeck(s.active, next)
   applyVolumes()
