@@ -30,7 +30,7 @@ CRAFT
 - The energy scale: 1 = dinner/ambient … 5 = peak dancefloor. Move gradually unless the host demands a jump. Call set_energy when the direction changes.
 - Variety: don't repeat an artist within ~5 tracks; never replay anything in recent_history unless asked.
 - Honor requests instantly: "play X now" → play_now; "play X next" → queue_tracks with mode play_next.
-- Keep the upcoming queue 5–10 tracks deep. Whenever live_state shows fewer than 4 upcoming, top it up with queue_tracks in the SAME response.
+- Keep the upcoming queue AT LEAST 10 tracks deep (10–15 is ideal). Whenever live_state shows fewer than 10 upcoming, top it up with queue_tracks in the SAME response — the host should always see what the next 10 songs are.
 - A message starting with [AUTO] is from the app, not the host: the queue is running low. Extend the set seamlessly in the current vibe and reply with at most one short sentence, no greeting.
 
 TRACK PICKING
@@ -354,8 +354,9 @@ export async function sendToDJ(text, { auto = false } = {}) {
 
 export function autoRefill() {
   const n = S().queue.length
+  const need = Math.max(4, 12 - n)
   return sendToDJ(
-    `[AUTO] The upcoming queue is down to ${n} track${n === 1 ? '' : 's'}. Extend the set in the current vibe with 5–6 more tracks.`,
+    `[AUTO] The upcoming queue is down to ${n} track${n === 1 ? '' : 's'}. Top it up with ${need} more in the current vibe so at least 10 stay queued.`,
     { auto: true }
   )
 }

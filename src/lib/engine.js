@@ -185,12 +185,12 @@ function tick() {
     }
   }
 
-  // auto-refill: ask the AI for more tracks before the well runs dry
+  // auto-refill: keep at least 10 tracks queued at all times
   if (
     st.settings.autoRefill &&
     st.settings.anthropicKey &&
     !st.aiBusy &&
-    st.queue.length < 3 &&
+    st.queue.length < 10 &&
     act.track &&
     (act.state === 'playing' || st.transition) &&
     Date.now() - lastRefillAt > 90_000 &&
@@ -378,6 +378,45 @@ export function moveToFront(id) {
     if (!t) return {}
     return { queue: [t, ...s.queue.filter((x) => x.id !== id)] }
   })
+}
+
+// Drag-reorder: insert the dragged track before the target track.
+export function moveBefore(dragId, targetId) {
+  if (dragId === targetId) return
+  set((s) => {
+    const t = s.queue.find((x) => x.id === dragId)
+    if (!t) return {}
+    const rest = s.queue.filter((x) => x.id !== dragId)
+    const idx = rest.findIndex((x) => x.id === targetId)
+    if (idx === -1) return {}
+    return { queue: [...rest.slice(0, idx), t, ...rest.slice(idx)] }
+  })
+}
+
+export function moveToEnd(id) {
+  set((s) => {
+    const t = s.queue.find((x) => x.id === id)
+    if (!t) return {}
+    return { queue: [...s.queue.filter((x) => x.id !== id), t] }
+  })
+}
+
+// Drop a queued track onto a deck: pull it from the queue and crossfade
+// into it right now. deckPref only matters when nothing is playing yet.
+export function playNowFromQueue(id, deckPref) {
+  const s = S()
+  if (s.transition) {
+    toast('Already blending — drop it again in a moment')
+    return
+  }
+  const t = s.queue.find((x) => x.id === id)
+  if (!t) return
+  set({ queue: s.queue.filter((x) => x.id !== id) })
+  const st = S()
+  if (!st.decks[st.active].track && deckPref && !st.decks[deckPref].track) {
+    set({ active: deckPref, xfade: deckPref === 'B' ? 1 : 0, started: true })
+  }
+  playNow(t)
 }
 
 export function playNow(track) {

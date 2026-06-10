@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import * as engine from '../lib/engine'
+import { drag } from '../lib/dragdrop'
 import { fmtTime } from '../lib/time'
 import Waveform from './Waveform'
 
@@ -15,6 +16,9 @@ export default function Deck({ deck }) {
   const transition = useStore((s) => s.transition)
   const videoMode = useStore((s) => s.settings.videoMode)
   const fader = useStore((s) => s.faders[deck])
+  const nextTrack = useStore((s) => s.queue[0])
+  const activeDeckHasTrack = useStore((s) => !!s.decks[s.active].track)
+  const [dropOver, setDropOver] = useState(false)
   const c = COLORS[deck]
   const elId = `yt-deck-${deck}`
   const isLive = active === deck || transition?.to === deck
@@ -27,6 +31,27 @@ export default function Deck({ deck }) {
   }, [])
 
   const platter = videoMode === 'platter'
+
+  const dropHandlers = {
+    onDragOver: (e) => {
+      if (drag.id) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        setDropOver(true)
+      }
+    },
+    onDragLeave: (e) => {
+      if (!e.currentTarget.contains(e.relatedTarget)) setDropOver(false)
+    },
+    onDrop: (e) => {
+      e.preventDefault()
+      setDropOver(false)
+      if (drag.id) {
+        engine.playNowFromQueue(drag.id, deck)
+        drag.id = null
+      }
+    },
+  }
 
   return (
     <section
@@ -50,8 +75,9 @@ export default function Deck({ deck }) {
         </span>
       </div>
 
-      {/* video stage */}
+      {/* video stage (also a drop target: drop a queued track to play it now) */}
       <div
+        {...dropHandlers}
         className={
           platter
             ? 'relative w-full max-w-[280px] lg:max-w-[330px] aspect-square mx-auto'
@@ -76,9 +102,9 @@ export default function Deck({ deck }) {
           </>
         )}
         <div
-          className={`absolute inset-0 overflow-hidden bg-black ring-1 ring-white/10 ${
-            platter ? 'rounded-full' : 'rounded-2xl'
-          }`}
+          className={`absolute inset-0 overflow-hidden bg-black ring-1 ${
+            dropOver ? 'ring-2 ring-violet-300/80' : 'ring-white/10'
+          } ${platter ? 'rounded-full' : 'rounded-2xl'}`}
           style={isLive && playing ? { boxShadow: `0 0 50px -12px ${c.glow}` } : undefined}
         >
           <div
@@ -86,12 +112,47 @@ export default function Deck({ deck }) {
           >
             <div id={elId} />
           </div>
-          {!d.track && (
-            <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-white/[0.04] to-transparent">
-              <div className="text-center px-6">
-                <div className={`font-display text-5xl font-bold opacity-15 ${c.text}`}>{deck}</div>
-                <div className="text-[11px] text-zinc-600 mt-1">deck empty</div>
+
+          {/* transparent shield: catches drag events that the iframe would
+              otherwise swallow (we drive playback via the API, controls=0) */}
+          <div className="absolute inset-0" />
+
+          {/* empty deck: preview what's up next (on the deck that will receive it) */}
+          {!d.track &&
+            (nextTrack && (deck === active || activeDeckHasTrack) ? (
+              <div className="absolute inset-0 pointer-events-none">
+                <img
+                  src={`https://i.ytimg.com/vi/${nextTrack.videoId}/hqdefault.jpg`}
+                  alt=""
+                  draggable={false}
+                  className="w-full h-full object-cover opacity-60"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/45" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-[14%] text-center">
+                  <span className="text-[9px] font-semibold tracking-[0.3em] px-2.5 py-1 rounded-full bg-black/60 border border-white/15 text-zinc-200">
+                    UP NEXT
+                  </span>
+                  <div className="text-sm font-semibold text-white drop-shadow max-w-full truncate">
+                    {nextTrack.title}
+                  </div>
+                  <div className="text-xs text-zinc-300/90 max-w-full truncate">{nextTrack.artist}</div>
+                </div>
               </div>
+            ) : (
+              <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-white/[0.04] to-transparent pointer-events-none">
+                <div className="text-center px-6">
+                  <div className={`font-display text-5xl font-bold opacity-15 ${c.text}`}>{deck}</div>
+                  <div className="text-[11px] text-zinc-600 mt-1">deck empty</div>
+                </div>
+              </div>
+            ))}
+
+          {/* drop highlight */}
+          {dropOver && (
+            <div className="absolute inset-0 z-10 grid place-items-center bg-violet-500/20 pointer-events-none">
+              <span className="text-[11px] font-bold tracking-[0.25em] px-3.5 py-1.5 rounded-full bg-black/75 border border-violet-300/50 text-violet-100">
+                DROP TO PLAY
+              </span>
             </div>
           )}
         </div>
@@ -105,7 +166,9 @@ export default function Deck({ deck }) {
             <div className="text-xs text-zinc-500 truncate">{d.track.artist}</div>
           </>
         ) : (
-          <div className="text-xs text-zinc-600 italic">waiting for a track…</div>
+          <div className="text-xs text-zinc-600 italic">
+            {nextTrack ? 'standing by…' : 'waiting for a track…'}
+          </div>
         )}
       </div>
 
