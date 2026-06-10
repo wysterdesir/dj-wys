@@ -46,6 +46,12 @@ export const useStore = create(
       eventPlan: '', // run-of-show the host gave the DJ
       banner: '', // big-screen marquee message above the decks
 
+      // ---------- set / gig lifecycle ----------
+      currentSet: null, // { id, name, startedAt }
+      pastSets: [], // archived gigs: { id, name, startedAt, endedAt, eventPlan, tracks }
+      lastActiveAt: 0, // last time music was actually playing
+      lastNowPlaying: null, // in-flight track snapshot — survives reload for archiving
+
       // ---------- chat ----------
       chat: [], // { id, role: 'user'|'dj'|'event'|'error', text, chips: [] }
       apiHistory: [], // raw Anthropic message objects (incl. tool blocks)
@@ -69,6 +75,10 @@ export const useStore = create(
         autoDJ: s.autoDJ,
         eventPlan: s.eventPlan,
         banner: s.banner,
+        currentSet: s.currentSet,
+        pastSets: s.pastSets.slice(0, 50),
+        lastActiveAt: s.lastActiveAt,
+        lastNowPlaying: s.lastNowPlaying,
       }),
     }
   )

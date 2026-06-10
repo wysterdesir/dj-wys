@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from './store'
 import * as engine from './lib/engine'
+import { initSetLifecycle } from './lib/sets'
 import Header from './components/Header'
 import Banner from './components/Banner'
 import Deck from './components/Deck'
@@ -147,6 +148,11 @@ function Toast() {
 export default function App() {
   const mobileTab = useStore((s) => s.mobileTab)
   const chatOpen = useStore((s) => s.chatOpen)
+
+  // gig lifecycle: ensure a set exists; auto-archive a stale previous gig
+  useEffect(() => {
+    initSetLifecycle()
+  }, [])
 
   // transport keyboard shortcuts (ignored while typing)
   useEffect(() => {

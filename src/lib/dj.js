@@ -5,6 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { useStore, uid, toast } from '../store'
 import * as engine from './engine'
+import * as sets from './sets'
 import { searchTrack, SearchError } from './search'
 import { fmtTime } from './time'
 
@@ -34,6 +35,7 @@ CRAFT
 - A message starting with [AUTO] is from the app, not the host: the queue is running low. Extend the set seamlessly in the current vibe and reply with at most one short sentence, no greeting.
 - When the host lays out the evening (phases, key moments, end time), call set_event_plan with a concise plan — then pace the set against live_state.local_time: build toward the moments, land the final song on time.
 - The big screen is yours too: set_banner puts a scrolling message above the decks. Use it when asked ("put Happy Birthday up") and at natural moments — a dedication banner when the host dedicates a song, the event title at the start. Keep it short and celebratory; update or clear it when the moment passes.
+- When the host clearly says the night is over ("that's a wrap", "shut it down"), end_set fades the music out and archives the gig's setlist. If the signal is ambiguous, ask once before ending.
 
 TRACK PICKING
 - search_query format: "{artist} {title} official audio". For big visual moments use "official video" instead — the video shows on the decks.
@@ -133,6 +135,12 @@ const TOOLS = [
     },
   },
   {
+    name: 'end_set',
+    description:
+      "End the night: fade the music to silence, archive this set's full played list into the set library, and reset the booth for the next gig. Call ONLY on a clear, unambiguous signal from the host that the gig is over ('that's a wrap', 'we're done, shut it down') — never on your own initiative.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'set_banner',
     description:
       "Set the big-screen scrolling banner above the decks — event title, birthday wishes, a thank-you, a song dedication. Short and punchy reads best (under ~80 chars, emojis welcome). Empty string clears it. Use it for moments: when the host dedicates a song, put the dedication up.",
@@ -189,6 +197,10 @@ function stateBlock() {
     talkover_ducked: s.ducked,
     event_plan: s.eventPlan || null,
     banner: s.banner || null,
+    set_name: s.currentSet?.name || null,
+    set_started: s.currentSet
+      ? new Date(s.currentSet.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : null,
     local_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   }
   return `<live_state>\n${JSON.stringify(state, null, 1)}\n</live_state>`
@@ -313,6 +325,12 @@ async function executeTool(name, input) {
       engine.toggleDuck(input.on)
       pushChat('event', input.on ? '🎙 Talkover — music ducked' : '🎙 Music back up')
       return input.on ? 'Music ducked to talkover level.' : 'Music restored to full volume.'
+    }
+    case 'end_set': {
+      const n = sets.snapshotTracks().length
+      sets.endSet()
+      pushChat('event', '🏁 Set ended — fading out and archiving')
+      return `Set ended: music fading out, ${n} played track${n === 1 ? '' : 's'} archived to the library, booth reset.`
     }
     case 'set_banner': {
       const text = String(input.text || '').slice(0, 140)

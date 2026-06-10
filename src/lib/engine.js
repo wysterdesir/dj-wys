@@ -221,6 +221,16 @@ function loadOnDeck(deck, track, { andPlay = true } = {}) {
       ...s.decks,
       [deck]: { track, state: 'loading', progress: 0, duration: track.durationSec || 0 },
     },
+    // persisted snapshot so the airing song still reaches the set archive
+    // even if the page is closed mid-track
+    lastNowPlaying: andPlay
+      ? {
+          artist: track.artist,
+          title: track.title,
+          durationSec: track.durationSec,
+          energy: track.energy,
+        }
+      : s.lastNowPlaying,
   }))
   const startSeconds = startAtOf(track)
   if (andPlay) {
@@ -266,6 +276,11 @@ function tick() {
   const act = st.decks[st.active]
   const mixOut = act.track ? mixOutPoint(act.track, act.duration) : 0
   const remaining = act.track && act.duration > 0 ? mixOut - act.progress : Infinity
+
+  // heartbeat for the set lifecycle: "when was music last actually playing"
+  if (act.state === 'playing' && Date.now() - (st.lastActiveAt || 0) > 30_000) {
+    set({ lastActiveAt: Date.now() })
+  }
 
   // stall watchdog: playback frozen for 12s on the live deck → move on
   if (
@@ -601,4 +616,51 @@ export function pauseMusic() {
 export function resumeMusic() {
   const s = S()
   if (s.decks[s.active].state !== 'playing') togglePlay()
+}
+
+// ---------------------------------------------------------------- set end
+
+// Hard stop: silence both players and reset the mixer surface.
+export function stopAll() {
+  cancelFadeAnim()
+  safe(players.A, 'stopVideo')
+  safe(players.B, 'stopVideo')
+  cuedFor.A = null
+  cuedFor.B = null
+  duckLevel = 1
+  set({
+    decks: { A: emptyDeck(), B: emptyDeck() },
+    transition: null,
+    xfade: 0,
+    active: 'A',
+    needsTap: false,
+    started: false,
+    ducked: false,
+    lastNowPlaying: null,
+  })
+  applyVolumes()
+  releaseWakeLock()
+}
+
+// End-of-night fade: ease the whole mix to silence, then stop everything.
+export function fadeOutAndStop(seconds = 2.5, onDone) {
+  if (duckStepper) {
+    anims.delete(duckStepper)
+    duckStepper = null
+  }
+  const from = duckLevel
+  const t0 = performance.now()
+  const dur = Math.max(0.3, seconds) * 1000
+  duckStepper = addAnim((t) => {
+    const k = Math.min(1, (t - t0) / dur)
+    duckLevel = from * (1 - k)
+    applyVolumes()
+    if (k >= 1) {
+      duckStepper = null
+      stopAll() // restores duckLevel and ducked
+      onDone?.()
+      return true
+    }
+    return false
+  })
 }
