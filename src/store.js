@@ -44,6 +44,7 @@ export const useStore = create(
       history: [],
       energy: 3,
       eventPlan: '', // run-of-show the host gave the DJ
+      banner: '', // big-screen marquee message above the decks
 
       // ---------- chat ----------
       chat: [], // { id, role: 'user'|'dj'|'event'|'error', text, chips: [] }
@@ -67,6 +68,7 @@ export const useStore = create(
         apiHistory: s.apiHistory.slice(-40),
         autoDJ: s.autoDJ,
         eventPlan: s.eventPlan,
+        banner: s.banner,
       }),
     }
   )

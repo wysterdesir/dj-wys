@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useStore } from './store'
 import * as engine from './lib/engine'
 import Header from './components/Header'
+import Banner from './components/Banner'
 import Deck from './components/Deck'
 import Mixer from './components/Mixer'
 import QueuePanel from './components/QueuePanel'
@@ -197,6 +198,7 @@ export default function App() {
             mobileTab === 'decks' ? 'flex' : 'hidden'
           } lg:flex`}
         >
+          <Banner />
           <div className="flex-1 min-h-0 overflow-y-auto thin-scroll lg:overflow-visible">
             <div className="flex flex-col lg:flex-row items-stretch gap-4 xl:gap-10 px-4 lg:px-8 py-3 lg:h-full w-full max-w-[1880px] mx-auto">
               <Deck deck="A" />

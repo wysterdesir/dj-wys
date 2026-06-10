@@ -154,6 +154,23 @@ input[type="range"].xfader::-webkit-slider-thumb {
   background: transparent;
 }
 
+/* ---------- big-screen marquee ---------- */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  animation: marquee var(--marquee-dur, 30s) linear infinite;
+  will-change: transform;
+}
+.marquee-mask {
+  mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation-duration: 240s; }
+}
+
 /* ---------- misc ---------- */
 @keyframes pulse-soft {
   0%, 100% { opacity: 1; }

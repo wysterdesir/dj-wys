@@ -33,6 +33,7 @@ CRAFT
 - Keep the upcoming queue AT LEAST 10 tracks deep (10–15 is ideal). Whenever live_state shows fewer than 10 upcoming, top it up with queue_tracks in the SAME response — the host should always see what the next 10 songs are.
 - A message starting with [AUTO] is from the app, not the host: the queue is running low. Extend the set seamlessly in the current vibe and reply with at most one short sentence, no greeting.
 - When the host lays out the evening (phases, key moments, end time), call set_event_plan with a concise plan — then pace the set against live_state.local_time: build toward the moments, land the final song on time.
+- The big screen is yours too: set_banner puts a scrolling message above the decks. Use it when asked ("put Happy Birthday up") and at natural moments — a dedication banner when the host dedicates a song, the event title at the start. Keep it short and celebratory; update or clear it when the moment passes.
 
 TRACK PICKING
 - search_query format: "{artist} {title} official audio". For big visual moments use "official video" instead — the video shows on the decks.
@@ -132,6 +133,16 @@ const TOOLS = [
     },
   },
   {
+    name: 'set_banner',
+    description:
+      "Set the big-screen scrolling banner above the decks — event title, birthday wishes, a thank-you, a song dedication. Short and punchy reads best (under ~80 chars, emojis welcome). Empty string clears it. Use it for moments: when the host dedicates a song, put the dedication up.",
+    input_schema: {
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text'],
+    },
+  },
+  {
     name: 'set_event_plan',
     description:
       "Store or update the evening's run-of-show (phases, key moments, end time) as a short plan (max ~300 chars). Replaces the previous plan; it stays visible to you in live_state and to the host in the header.",
@@ -177,6 +188,7 @@ function stateBlock() {
     auto_dj: s.autoDJ,
     talkover_ducked: s.ducked,
     event_plan: s.eventPlan || null,
+    banner: s.banner || null,
     local_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   }
   return `<live_state>\n${JSON.stringify(state, null, 1)}\n</live_state>`
@@ -301,6 +313,12 @@ async function executeTool(name, input) {
       engine.toggleDuck(input.on)
       pushChat('event', input.on ? '🎙 Talkover — music ducked' : '🎙 Music back up')
       return input.on ? 'Music ducked to talkover level.' : 'Music restored to full volume.'
+    }
+    case 'set_banner': {
+      const text = String(input.text || '').slice(0, 140)
+      set({ banner: text })
+      pushChat('event', text ? `📢 Banner: "${text}"` : '📢 Banner cleared')
+      return text ? `Big-screen banner now scrolling: "${text}"` : 'Banner cleared.'
     }
     case 'set_event_plan': {
       const plan = String(input.plan || '').slice(0, 400)

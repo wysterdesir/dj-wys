@@ -74,6 +74,7 @@ export default function SettingsModal() {
   const open = useStore((s) => s.settingsOpen)
   const settings = useStore((s) => s.settings)
   const setSetting = useStore((s) => s.setSetting)
+  const banner = useStore((s) => s.banner)
   const close = () => useStore.setState({ settingsOpen: false })
 
   if (!open) return null
@@ -177,6 +178,14 @@ export default function SettingsModal() {
 
         <section className="flex flex-col gap-4">
           <h3 className="text-[10px] font-semibold tracking-[0.25em] text-zinc-500">LOOK & DEVICE</h3>
+          <Row label="Big-screen banner" hint="scrolls above the decks · or just ask the DJ">
+            <input
+              value={banner}
+              onChange={(e) => useStore.setState({ banner: e.target.value.slice(0, 140) })}
+              placeholder="Happy 60th, Maman! 🎉"
+              className="bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-violet-400/50"
+            />
+          </Row>
           <Row label="Deck visual">
             <div className="flex gap-2">
               {[
