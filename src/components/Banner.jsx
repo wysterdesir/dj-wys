@@ -61,7 +61,8 @@ export default function Banner() {
   const text = banner.toUpperCase()
   const repeats = Math.max(3, Math.ceil(60 / Math.max(4, text.length)))
   const totalChars = (text.length + 4) * repeats
-  const dur = Math.min(90, Math.max(16, Math.round(totalChars * 0.32)))
+  // doubled glyphs = doubled pixels per char; doubled duration keeps the pace
+  const dur = Math.min(180, Math.max(28, Math.round(totalChars * 0.64)))
 
   const Half = ({ hidden }) => (
     <div className="flex items-center shrink-0" aria-hidden={hidden}>
@@ -78,7 +79,7 @@ export default function Banner() {
     <div className="shrink-0 relative group py-1 lg:py-2" role="marquee" aria-label={banner}>
       <div className="overflow-hidden marquee-mask">
         <div
-          className="marquee-track flex w-max font-display font-bold uppercase tracking-[0.2em] text-xl lg:text-[2.4rem] leading-tight"
+          className="marquee-track flex w-max font-display font-bold uppercase tracking-[0.2em] text-[2.5rem] lg:text-[4.8rem] leading-tight"
           style={{
             '--marquee-dur': `${dur}s`,
             color: c.hex,
