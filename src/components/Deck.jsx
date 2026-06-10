@@ -18,6 +18,7 @@ export default function Deck({ deck }) {
   const fader = useStore((s) => s.faders[deck])
   const nextTrack = useStore((s) => s.queue[0])
   const activeDeckHasTrack = useStore((s) => !!s.decks[s.active].track)
+  const fadeSeconds = useStore((s) => s.settings.fadeSeconds)
   const [dropOver, setDropOver] = useState(false)
   const c = COLORS[deck]
   const elId = `yt-deck-${deck}`
@@ -99,6 +100,46 @@ export default function Deck({ deck }) {
                 style={{ background: c.hex, boxShadow: `0 0 10px ${c.glow}` }}
               />
             </div>
+            {/* elapsed-time arc; warms to amber as the mix-out point nears */}
+            {d.track &&
+              (() => {
+                const C = 2 * Math.PI * 48
+                const frac = d.duration > 0 ? Math.min(1, d.progress / d.duration) : 0
+                const mixOut = engine.mixOutPoint(d.track, d.duration)
+                const nearOut =
+                  playing && d.duration > 0 && mixOut - d.progress <= fadeSeconds + 10
+                return (
+                  <svg viewBox="0 0 100 100" className="absolute -inset-4 pointer-events-none">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="48"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.07)"
+                      strokeWidth="1.5"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="48"
+                      fill="none"
+                      stroke={nearOut ? '#fbbf24' : c.hex}
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeDasharray={C}
+                      strokeDashoffset={C * (1 - frac)}
+                      transform="rotate(-90 50 50)"
+                      style={{
+                        transition: 'stroke 0.5s',
+                        opacity: 0.9,
+                        filter: nearOut
+                          ? 'drop-shadow(0 0 5px rgba(251,191,36,0.8))'
+                          : `drop-shadow(0 0 3px ${c.glow})`,
+                      }}
+                    />
+                  </svg>
+                )
+              })()}
           </>
         )}
         <div

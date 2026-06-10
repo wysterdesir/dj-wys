@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useStore } from '../store'
+import { useStore, toast } from '../store'
 import * as engine from '../lib/engine'
 import { drag } from '../lib/dragdrop'
 import { loadDemoSet } from '../lib/demo'
@@ -18,7 +18,7 @@ function EnergyDots({ n }) {
   )
 }
 
-function TrackCard({ t, index, compact }) {
+function TrackCard({ t, index, compact, eta }) {
   const [over, setOver] = useState(false)
   const draggable = index >= 0 // history rows aren't draggable
 
@@ -71,6 +71,11 @@ function TrackCard({ t, index, compact }) {
         <span className="absolute bottom-1 right-1 text-[10px] font-mono bg-black/70 px-1 rounded">
           {fmtTime(t.durationSec)}
         </span>
+        {eta && (
+          <span className="absolute bottom-1 left-1 text-[9px] font-mono bg-black/70 px-1 rounded text-zinc-300">
+            ~{eta}
+          </span>
+        )}
         {index === 0 && (
           <span className="absolute top-1 left-1 text-[9px] font-semibold tracking-wider bg-violet-500/80 px-1.5 py-0.5 rounded">
             NEXT
@@ -89,6 +94,26 @@ function TrackCard({ t, index, compact }) {
           )}
         </div>
       </div>
+      {!draggable && (
+        <div
+          className={`${
+            compact
+              ? 'absolute top-1 right-1 opacity-0 group-hover:opacity-100'
+              : 'flex-row opacity-60'
+          } flex gap-1 transition-opacity`}
+        >
+          <button
+            onClick={() => {
+              engine.queueTracks([t], 'play_next')
+              toast(`Queued next: ${t.title}`)
+            }}
+            title="Play it again (queued next)"
+            className="w-6 h-6 grid place-items-center rounded-md bg-black/70 hover:bg-emerald-500/70 text-[11px]"
+          >
+            ⟲
+          </button>
+        </div>
+      )}
       {draggable && (
         <div
           className={`${
@@ -129,12 +154,25 @@ function TrackCard({ t, index, compact }) {
 export default function QueuePanel({ variant = 'strip' }) {
   const queue = useStore((s) => s.queue)
   const history = useStore((s) => s.history)
+  const decks = useStore((s) => s.decks)
+  const active = useStore((s) => s.active)
   const [showHistory, setShowHistory] = useState(false)
   const [endOver, setEndOver] = useState(false)
 
   const runtime = queue.reduce((a, t) => a + (t.durationSec || 210), 0)
   const list = showHistory ? [...history].reverse() : queue
   const page = variant === 'page'
+
+  // wall-clock ETA per queued track (current track's remainder + everything before it)
+  const act = decks[active]
+  let cursor =
+    Date.now() +
+    (act.track && act.duration > 0 ? Math.max(0, act.duration - act.progress) * 1000 : 0)
+  const etas = queue.map((t) => {
+    const e = cursor
+    cursor += (t.durationSec || 210) * 1000
+    return new Date(e).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  })
 
   // dropping on empty space sends the track to the end of the queue
   const containerDnD = showHistory
@@ -214,7 +252,13 @@ export default function QueuePanel({ variant = 'strip' }) {
           }`}
         >
           {list.map((t, i) => (
-            <TrackCard key={t.id} t={t} index={showHistory ? -1 : i} compact={false} />
+            <TrackCard
+              key={t.id}
+              t={t}
+              index={showHistory ? -1 : i}
+              compact={false}
+              eta={showHistory ? null : etas[i]}
+            />
           ))}
         </div>
       ) : (
@@ -225,7 +269,13 @@ export default function QueuePanel({ variant = 'strip' }) {
           }`}
         >
           {list.map((t, i) => (
-            <TrackCard key={t.id} t={t} index={showHistory ? -1 : i} compact />
+            <TrackCard
+              key={t.id}
+              t={t}
+              index={showHistory ? -1 : i}
+              compact
+              eta={showHistory ? null : etas[i]}
+            />
           ))}
         </div>
       )}

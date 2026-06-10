@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useStore } from './store'
 import * as engine from './lib/engine'
 import Header from './components/Header'
@@ -34,6 +35,61 @@ function MobileTabBar() {
   )
 }
 
+// slim now-playing bar for the mobile Queue/Chat tabs — never fly blind
+function NowPlayingBar() {
+  const decks = useStore((s) => s.decks)
+  const active = useStore((s) => s.active)
+  const tab = useStore((s) => s.mobileTab)
+  const d = decks[active]
+  if (tab === 'decks' || !d.track) return null
+  const frac = d.duration > 0 ? Math.min(100, (d.progress / d.duration) * 100) : 0
+  const playing = d.state === 'playing' || d.state === 'loading'
+  return (
+    <div className="lg:hidden shrink-0 border-t border-white/10 bg-black/70 backdrop-blur-xl">
+      <div className="h-0.5 bg-white/10">
+        <div
+          className="h-full bg-gradient-to-r from-cyan-400 via-violet-400 to-pink-400"
+          style={{ width: `${frac}%` }}
+        />
+      </div>
+      <div
+        className="flex items-center gap-3 px-3 py-2"
+        onClick={() => useStore.setState({ mobileTab: 'decks' })}
+      >
+        <img
+          src={`https://i.ytimg.com/vi/${d.track.videoId}/default.jpg`}
+          alt=""
+          className="w-9 h-9 rounded-lg object-cover"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium text-zinc-100 truncate">{d.track.title}</div>
+          <div className="text-[10px] text-zinc-500 truncate">{d.track.artist}</div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            engine.togglePlay()
+          }}
+          className="w-9 h-9 grid place-items-center rounded-full bg-white/10 text-xs"
+          aria-label={playing ? 'Pause' : 'Play'}
+        >
+          {playing ? '❚❚' : '▶'}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            engine.skip()
+          }}
+          className="w-9 h-9 grid place-items-center rounded-full bg-white/10 text-xs"
+          aria-label="Skip"
+        >
+          ⏭
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function TapOverlay() {
   const needsTap = useStore((s) => s.needsTap)
   if (!needsTap) return null
@@ -62,6 +118,44 @@ function Toast() {
 export default function App() {
   const mobileTab = useStore((s) => s.mobileTab)
   const chatOpen = useStore((s) => s.chatOpen)
+
+  // transport keyboard shortcuts (ignored while typing)
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return
+      const s = useStore.getState()
+      switch (e.key) {
+        case ' ':
+          e.preventDefault()
+          engine.togglePlay()
+          break
+        case 'ArrowRight':
+          e.preventDefault()
+          engine.skip()
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          engine.back()
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          engine.setMaster(Math.min(1, s.master + 0.05))
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          engine.setMaster(Math.max(0, s.master - 0.05))
+          break
+        case 't':
+        case 'T':
+          engine.toggleDuck(!s.ducked)
+          break
+        default:
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden no-select">
@@ -101,6 +195,7 @@ export default function App() {
         </aside>
       </div>
 
+      <NowPlayingBar />
       <MobileTabBar />
       <SettingsModal />
       <TapOverlay />

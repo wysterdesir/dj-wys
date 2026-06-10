@@ -37,11 +37,13 @@ export const useStore = create(
       transition: null, // { to, until }
       needsTap: false, // mobile autoplay was blocked — show tap overlay
       started: false, // set has been started at least once
+      ducked: false, // talkover: music dipped under speech
 
       // ---------- queue ----------
       queue: [],
       history: [],
       energy: 3,
+      eventPlan: '', // run-of-show the host gave the DJ
 
       // ---------- chat ----------
       chat: [], // { id, role: 'user'|'dj'|'event'|'error', text, chips: [] }
@@ -64,6 +66,7 @@ export const useStore = create(
         chat: s.chat.slice(-80),
         apiHistory: s.apiHistory.slice(-40),
         autoDJ: s.autoDJ,
+        eventPlan: s.eventPlan,
       }),
     }
   )

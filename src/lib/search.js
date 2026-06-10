@@ -42,6 +42,29 @@ export class SearchError extends Error {
   }
 }
 
+// ---- daily search counter (each fresh search ≈ 1% of the free quota) ----
+const QUOTA_KEY = 'djwys-quota-v1'
+const today = () => new Date().toISOString().slice(0, 10)
+
+function bumpQuota() {
+  try {
+    const q = JSON.parse(localStorage.getItem(QUOTA_KEY)) || {}
+    const n = q.date === today() ? (q.count || 0) + 1 : 1
+    localStorage.setItem(QUOTA_KEY, JSON.stringify({ date: today(), count: n }))
+  } catch {
+    /* fine */
+  }
+}
+
+export function quotaUsedToday() {
+  try {
+    const q = JSON.parse(localStorage.getItem(QUOTA_KEY))
+    return q && q.date === today() ? q.count || 0 : 0
+  } catch {
+    return 0
+  }
+}
+
 function score(item, query) {
   const q = query.toLowerCase()
   const title = item.title.toLowerCase()
@@ -70,6 +93,7 @@ export async function searchTrack(query, apiKey) {
   if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.result
 
   let searchRes
+  bumpQuota()
   try {
     const url =
       'https://www.googleapis.com/youtube/v3/search' +

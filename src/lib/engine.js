@@ -12,10 +12,38 @@ let fadeAnim = null
 let unlockedB = false
 let lastRefillAt = 0
 let refillErrorUntil = 0
+const cuedFor = { A: null, B: null } // videoId pre-buffered on a deck
+const watch = { A: { p: -1, at: 0 }, B: { p: -1, at: 0 } } // stall watchdog
+let duckLevel = 1 // 1 = full, ~0.18 = talkover
+let duckRaf = null
 
 const S = () => useStore.getState()
 const set = useStore.setState
 export const other = (d) => (d === 'A' ? 'B' : 'A')
+
+// ------------------------------------------------------------- mix points
+
+// Where the actual song starts (skip cinematic video intros). DJ-supplied.
+export function startAtOf(track) {
+  const sa = Math.round(track?.startAt || 0)
+  if (sa <= 0 || sa > 60) return 0
+  if (track?.durationSec && sa > track.durationSec * 0.25) return 0
+  return sa
+}
+
+// Where the blend to the next track should begin (before outros/credits).
+export function mixOutPoint(track, duration) {
+  const fo = Math.round(track?.fadeOutAt || 0)
+  if (
+    duration > 0 &&
+    fo > startAtOf(track) + 45 &&
+    fo <= duration &&
+    fo >= duration * 0.5
+  ) {
+    return fo
+  }
+  return duration
+}
 
 // ---------------------------------------------------------------- players
 
@@ -82,12 +110,32 @@ function onPlayerError(deck, code) {
 // ---------------------------------------------------------------- volumes
 
 // Equal-power crossfade: A fades on a cosine curve, B on a sine curve.
+// duckLevel rides on top for talkover (speeches/toasts).
 export function applyVolumes() {
   const s = S()
-  const gA = Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master
-  const gB = Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master
+  const gA = Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master * duckLevel
+  const gB = Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master * duckLevel
   safe(players.A, 'setVolume', Math.round(Math.max(0, Math.min(1, gA)) * 100))
   safe(players.B, 'setVolume', Math.round(Math.max(0, Math.min(1, gB)) * 100))
+}
+
+// Talkover: smoothly dip the music under speech and bring it back.
+export function toggleDuck(on) {
+  set({ ducked: !!on })
+  if (duckRaf) cancelAnimationFrame(duckRaf)
+  const target = on ? 0.18 : 1
+  const from = duckLevel
+  const t0 = performance.now()
+  const dur = 700
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur)
+    const e = k * k * (3 - 2 * k)
+    duckLevel = from + (target - from) * e
+    applyVolumes()
+    if (k < 1) duckRaf = requestAnimationFrame(step)
+    else duckRaf = null
+  }
+  duckRaf = requestAnimationFrame(step)
 }
 
 export function setXfade(x) {
@@ -135,14 +183,25 @@ function animateXfade(target, seconds, onDone) {
 // ---------------------------------------------------------------- loading
 
 function loadOnDeck(deck, track, { andPlay = true } = {}) {
+  watch[deck] = { p: -1, at: Date.now() }
   set((s) => ({
     decks: {
       ...s.decks,
       [deck]: { track, state: 'loading', progress: 0, duration: track.durationSec || 0 },
     },
   }))
-  if (andPlay) safe(players[deck], 'loadVideoById', track.videoId)
-  else safe(players[deck], 'cueVideoById', track.videoId)
+  const startSeconds = startAtOf(track)
+  if (andPlay) {
+    if (cuedFor[deck] === track.videoId) {
+      // pre-buffered earlier — instant start
+      safe(players[deck], 'playVideo')
+    } else {
+      safe(players[deck], 'loadVideoById', { videoId: track.videoId, startSeconds })
+    }
+  } else {
+    safe(players[deck], 'cueVideoById', { videoId: track.videoId, startSeconds })
+  }
+  cuedFor[deck] = null
 }
 
 // ---------------------------------------------------------------- ticker
@@ -154,12 +213,15 @@ export function startTicker() {
 
 function tick() {
   const s = S()
-  // progress updates
+  // progress updates + watchdog bookkeeping
   for (const deck of ['A', 'B']) {
     if (!s.decks[deck].track) continue
     const cur = safe(players[deck], 'getCurrentTime') || 0
     const dur = safe(players[deck], 'getDuration') || s.decks[deck].duration || 0
     const d = s.decks[deck]
+    if (cur > watch[deck].p + 0.25) {
+      watch[deck] = { p: cur, at: Date.now() }
+    }
     if (Math.abs(cur - d.progress) > 0.2 || Math.abs(dur - d.duration) > 0.5) {
       set((st) => ({
         decks: { ...st.decks, [deck]: { ...st.decks[deck], progress: cur, duration: dur } },
@@ -169,8 +231,24 @@ function tick() {
 
   const st = S()
   const act = st.decks[st.active]
+  const mixOut = act.track ? mixOutPoint(act.track, act.duration) : 0
+  const remaining = act.track && act.duration > 0 ? mixOut - act.progress : Infinity
 
-  // auto-DJ: start the crossfade as the outro approaches
+  // stall watchdog: playback frozen for 12s on the live deck → move on
+  if (
+    !st.transition &&
+    act.track &&
+    (act.state === 'playing' || act.state === 'loading') &&
+    Date.now() - watch[st.active].at > 12_000
+  ) {
+    watch[st.active] = { p: -1, at: Date.now() }
+    if (st.queue.length > 0) {
+      toast(`"${act.track.title}" stalled — skipping ahead`)
+      beginTransition({ fade: 1 })
+    }
+  }
+
+  // auto-DJ: start the crossfade as the mix-out point approaches
   if (
     st.autoDJ &&
     !st.transition &&
@@ -179,9 +257,30 @@ function tick() {
     act.duration > 0 &&
     st.queue.length > 0
   ) {
-    const remaining = act.duration - act.progress
     if (remaining <= st.settings.fadeSeconds + 0.8) {
       beginTransition({})
+    }
+  }
+
+  // pre-buffer: cue the next track on the idle deck just before the blend
+  if (
+    act.track &&
+    act.state === 'playing' &&
+    act.duration > 0 &&
+    !st.transition &&
+    st.queue[0]
+  ) {
+    const idle = other(st.active)
+    if (
+      !st.decks[idle].track &&
+      remaining <= st.settings.fadeSeconds + 18 &&
+      cuedFor[idle] !== st.queue[0].videoId
+    ) {
+      cuedFor[idle] = st.queue[0].videoId
+      safe(players[idle], 'cueVideoById', {
+        videoId: st.queue[0].videoId,
+        startSeconds: startAtOf(st.queue[0]),
+      })
     }
   }
 
@@ -352,7 +451,8 @@ export function back() {
 // ---------------------------------------------------------------- queue ops
 
 export function queueTracks(tracks, mode = 'append') {
-  const items = tracks.map((t) => ({ id: uid(), ...t }))
+  // fresh id even when re-queueing a history item, so list keys never collide
+  const items = tracks.map((t) => ({ ...t, id: uid() }))
   set((s) => {
     if (mode === 'replace_upcoming') return { queue: items }
     if (mode === 'play_next') return { queue: [...items, ...s.queue] }

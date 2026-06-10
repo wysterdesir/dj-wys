@@ -1,8 +1,26 @@
 import { useState } from 'react'
 import { useStore, toast } from '../store'
 import { MODELS, validateAnthropicKey } from '../lib/dj'
-import { validateYouTubeKey } from '../lib/search'
+import { validateYouTubeKey, quotaUsedToday } from '../lib/search'
 import { loadDemoSet } from '../lib/demo'
+
+function exportSetList() {
+  const s = useStore.getState()
+  const act = s.decks[s.active].track
+  const all = [...s.history, ...(act ? [act] : [])]
+  if (all.length === 0) {
+    toast('Nothing played yet — the set list is empty')
+    return
+  }
+  const header = `DJ WYS set list — ${new Date().toLocaleDateString()}\n\n`
+  const lines = all.map((t, i) => `${i + 1}. ${t.artist} — ${t.title}`)
+  const blob = new Blob([header + lines.join('\n') + '\n'], { type: 'text/plain' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `djwys-setlist-${new Date().toISOString().slice(0, 10)}.txt`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
 
 function Row({ label, hint, children }) {
   return (
@@ -97,6 +115,25 @@ export default function SettingsModal() {
               placeholder="AIza…"
             />
           </Row>
+          {(() => {
+            const used = quotaUsedToday()
+            const pct = Math.min(100, Math.round((used / 99) * 100))
+            return (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      pct >= 80 ? 'bg-amber-400' : 'bg-violet-400/70'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className={`text-[10px] ${pct >= 80 ? 'text-amber-300' : 'text-zinc-500'}`}>
+                  {used} / ~99 searches today
+                </span>
+              </div>
+            )
+          })()}
         </section>
 
         <section className="flex flex-col gap-4">
@@ -188,9 +225,15 @@ export default function SettingsModal() {
               ▶ Load demo set
             </button>
             <button
+              onClick={exportSetList}
+              className="text-xs px-4 py-2 rounded-lg border border-white/15 text-zinc-200 hover:border-violet-400/50 transition"
+            >
+              ⬇ Download set list
+            </button>
+            <button
               onClick={() => {
                 if (confirm('Clear the chat, queue, and history?')) {
-                  useStore.setState({ chat: [], apiHistory: [], queue: [], history: [] })
+                  useStore.setState({ chat: [], apiHistory: [], queue: [], history: [], eventPlan: '' })
                   toast('Cleared')
                 }
               }}
@@ -199,6 +242,9 @@ export default function SettingsModal() {
               Clear chat & queue
             </button>
           </div>
+          <p className="text-[10px] leading-relaxed text-zinc-600">
+            Shortcuts: Space play/pause · ← back · → skip · ↑↓ master volume · T talkover.
+          </p>
           <p className="text-[10px] leading-relaxed text-zinc-600">
             Playback uses the official YouTube player — sign into your YouTube Premium account in
             this browser for ad-free music. Keys live in this browser's local storage only and are

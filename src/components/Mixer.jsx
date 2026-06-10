@@ -52,6 +52,7 @@ export default function Mixer() {
   const xfade = useStore((s) => s.xfade)
   const master = useStore((s) => s.master)
   const autoDJ = useStore((s) => s.autoDJ)
+  const ducked = useStore((s) => s.ducked)
   const fadeSeconds = useStore((s) => s.settings.fadeSeconds)
   const transition = useStore((s) => s.transition)
   const decks = useStore((s) => s.decks)
@@ -159,6 +160,20 @@ export default function Mixer() {
           </button>
         </div>
       </div>
+
+      {/* talkover */}
+      <button
+        onClick={() => engine.toggleDuck(!ducked)}
+        className={`w-full flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.2em] px-3 py-2.5 rounded-xl border transition ${
+          ducked
+            ? 'border-amber-300/50 bg-amber-400/15 text-amber-200'
+            : 'border-white/10 text-zinc-500 hover:text-zinc-300'
+        }`}
+        title="Duck the music to talk over it (T)"
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${ducked ? 'bg-amber-300 pulse-soft' : 'bg-zinc-600'}`} />
+        {ducked ? 'TALKOVER ON — TAP TO RESTORE' : '🎙 TALKOVER'}
+      </button>
 
       {/* master volume */}
       <div className="flex items-center gap-3">

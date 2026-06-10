@@ -37,10 +37,11 @@ function StatusDot({ ok, label }) {
 export default function Header() {
   const settings = useStore((s) => s.settings)
   const chatOpen = useStore((s) => s.chatOpen)
+  const eventPlan = useStore((s) => s.eventPlan)
 
   return (
-    <header className="shrink-0 flex items-center justify-between px-4 lg:px-6 py-3 border-b border-white/10">
-      <div className="flex items-center gap-2.5">
+    <header className="shrink-0 flex items-center justify-between gap-3 px-4 lg:px-6 py-3 border-b border-white/10">
+      <div className="flex items-center gap-2.5 shrink-0">
         <Logo />
         <h1 className="font-display font-bold text-xl tracking-tight bg-gradient-to-r from-cyan-300 via-violet-300 to-pink-300 bg-clip-text text-transparent">
           DJ WYS
@@ -50,7 +51,16 @@ export default function Header() {
         </span>
       </div>
 
-      <div className="flex items-center gap-4">
+      {eventPlan && (
+        <span
+          title={eventPlan}
+          className="hidden md:flex items-center gap-1.5 min-w-0 max-w-[320px] text-[11px] text-zinc-400 border border-white/10 bg-white/[0.03] rounded-full px-3 py-1"
+        >
+          📋 <span className="truncate">{eventPlan}</span>
+        </span>
+      )}
+
+      <div className="flex items-center gap-4 shrink-0">
         <StatusDot ok={!!settings.anthropicKey} label="DJ brain" />
         <StatusDot ok={!!settings.youtubeKey} label="Track search" />
         <button
