@@ -2,12 +2,117 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { sendToDJ, MODELS } from '../lib/dj'
 
-const QUICK_PROMPTS = [
-  "🎉 Family birthday party — multigenerational crowd, start warm and fun",
-  '🍸 Cocktail hour — smooth grooves, keep it low-key',
-  '💍 Wedding reception — build to a big dance floor',
-  '⚡ Bring the energy up!',
+// ---- set builder: tap a few chips, get a composed DJ brief -------------
+const EVENTS = [
+  '🎂 Birthday party',
+  '💍 Wedding reception',
+  '🥂 Anniversary',
+  '🍸 Cocktail / dinner party',
+  '🍖 BBQ / pool day',
+  '👨‍👩‍👧 Family reunion',
+  '🎄 Holiday party',
+  '🎓 Graduation',
+  '🎉 House party',
 ]
+const CROWDS = [
+  'All ages — kids to grandparents',
+  'Mostly 20s–30s',
+  'Mostly 30s–50s',
+  'Adults, mixed ages',
+  'Teens & kids',
+]
+const FLAVORS = [
+  'Afrobeats',
+  'Latin / reggaetón',
+  'Kompa, zouk & soca',
+  '70s–80s funk & disco',
+  'Classic rock',
+  'Hip-hop & R&B',
+  'Top-40 pop',
+  'Motown & oldies',
+]
+const OPENERS = [
+  '🌙 Ease in soft — dinner mode',
+  '🎶 Mid-tempo groove from the start',
+  '⚡ Full party energy right away',
+]
+
+function Chip({ label, on, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-[11px] px-2.5 py-1.5 rounded-full border transition ${
+        on
+          ? 'border-violet-400/60 bg-violet-400/15 text-violet-100'
+          : 'border-white/[0.08] text-zinc-500 hover:text-zinc-300 hover:border-white/25'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function ChipRow({ title, items, value, onPick, multi = false }) {
+  const isOn = (x) => (multi ? value.includes(x) : value === x)
+  const pick = (x) => {
+    if (multi) {
+      // functional update: stays correct even when clicks land in one batch
+      onPick((prev) =>
+        prev.includes(x) ? prev.filter((v) => v !== x) : prev.length < 3 ? [...prev, x] : prev
+      )
+    } else {
+      onPick(isOn(x) ? null : x)
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[9px] font-semibold tracking-[0.3em] text-zinc-600">{title}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((x) => (
+          <Chip key={x} label={x} on={isOn(x)} onClick={() => pick(x)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SetBuilder({ hasKey }) {
+  const [event, setEvent] = useState(null)
+  const [crowd, setCrowd] = useState(null)
+  const [flavors, setFlavors] = useState([])
+  const [opener, setOpener] = useState(null)
+
+  const brief = () => {
+    const bits = [`We're doing: ${event}.`]
+    if (crowd) bits.push(`Crowd: ${crowd}.`)
+    if (flavors.length) bits.push(`Lean on: ${flavors.join(', ')}.`)
+    if (opener) bits.push(`Opening vibe: ${opener}.`)
+    bits.push("Brief me back in one line, then build the opening queue — we'll adjust as we go.")
+    return bits.join(' ')
+  }
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <ChipRow title="EVENT" items={EVENTS} value={event} onPick={setEvent} />
+      <ChipRow title="CROWD" items={CROWDS} value={crowd} onPick={setCrowd} />
+      <ChipRow title="FLAVOR · OPTIONAL, UP TO 3" items={FLAVORS} value={flavors} onPick={setFlavors} multi />
+      <ChipRow title="OPENING ENERGY" items={OPENERS} value={opener} onPick={setOpener} />
+      {event && (
+        <p className="text-[11px] italic text-zinc-600 leading-relaxed border-l-2 border-white/10 pl-2.5">
+          {brief()}
+        </p>
+      )}
+      <button
+        onClick={() => hasKey && event && sendToDJ(brief())}
+        disabled={!hasKey || !event}
+        title={!hasKey ? 'Add your Anthropic key in Settings first' : !event ? 'Pick an event to start' : ''}
+        className="self-start text-xs font-semibold px-5 py-2.5 rounded-full border border-violet-400/40 bg-violet-400/10 text-violet-100 hover:bg-violet-400/20 disabled:opacity-35 disabled:cursor-not-allowed transition"
+      >
+        ▶ Brief the DJ & start the set
+      </button>
+    </div>
+  )
+}
 
 // Deliberately muted palette: the booth is the show — the chat is just the
 // quiet headset conversation between host and DJ.
@@ -86,22 +191,12 @@ export default function ChatSidebar() {
       {/* messages */}
       <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-4 py-4 flex flex-col gap-2.5">
         {chat.length === 0 && (
-          <div className="flex flex-col gap-3 mt-2">
+          <div className="flex flex-col gap-3 mt-1">
             <p className="text-[13px] text-zinc-500 leading-relaxed">
-              Tell me about tonight — the occasion, the crowd, the vibe — and I'll run the music
-              while you run the party. 🎧
+              Tell me about tonight — type it below, or tap a few chips and I'll take it from
+              there. 🎧
             </p>
-            <div className="flex flex-col gap-2">
-              {QUICK_PROMPTS.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => hasKey && sendToDJ(q)}
-                  className="text-left text-xs text-zinc-500 border border-white/[0.08] hover:border-white/25 hover:text-zinc-300 hover:bg-white/[0.03] rounded-xl px-3 py-2.5 transition"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+            <SetBuilder hasKey={hasKey} />
           </div>
         )}
         {chat.map((m) => (
