@@ -58,7 +58,8 @@ The free quota allows ~100 fresh searches per day; the app caches results for 30
 - **Track search** prefers the official "Artist – Topic" / VEVO uploads (the actual YouTube Music catalog) and skips non-embeddable videos; if an upload still refuses to play, the app auto-falls back to the next candidate or skips.
 - **The AI** (Claude) gets a live snapshot of both decks, the queue, and history on every message, and controls the booth through tools: `queue_tracks`, `play_now`, `skip_track`, `pause/resume`, `set_crossfade`, `set_energy`, `duck_music` (talkover), and `set_event_plan` (run-of-show). When the queue drops below 10 tracks it's automatically asked to extend the set in the current vibe.
 - **Mix points**: for tracks it knows well, the DJ supplies `start_at` / `fade_out_at` so playback skips cinematic video intros and blends before outros/credits. The next track pre-buffers on the idle deck for glitch-free transitions, and a watchdog auto-skips anything that stalls mid-set.
-- **Live controls**: drag queue cards to reorder, drop one on a deck to crossfade it in now, talkover button dips the music for toasts, keyboard shortcuts (Space, ←/→, ↑/↓, T), and wall-clock ETAs on every queued track.
+- **Live controls**: drag queue cards to reorder, drop one on a deck to crossfade it in now, talkover button dips the music for toasts, keyboard shortcuts (Space, ←/→, Shift+←/→ seek, ↑/↓, T, C), click/drag the waveform to seek, and wall-clock ETAs on every queued track.
+- **FX pad**: horn / riser / drop / laser / brake one-shots with cooldowns, synthesized through a shared reverb+echo space. Prefer real recordings? Drop mp3s into [public/fx/](public/fx/README.txt) and they override the synths automatically.
 - **Costs**: YouTube key — free tier. Anthropic — pay-per-use, typically around $1 per event with the default model.
 
 ## Run it yourself
