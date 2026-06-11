@@ -201,7 +201,7 @@ export default function Mixer() {
       <div className="flex items-center justify-center gap-4">
         <button
           onClick={() => engine.back()}
-          className="w-11 h-11 rounded-full grid place-items-center text-zinc-300 bg-white/5 hover:bg-white/10 active:scale-95 transition"
+          className="hw-round w-11 h-11 rounded-full grid place-items-center text-zinc-300"
           aria-label="Back"
         >
           <Icon.Prev />
@@ -211,10 +211,8 @@ export default function Mixer() {
             fx.warmup() // bless the FX audio context inside a real gesture
             engine.togglePlay()
           }}
-          className={`w-16 h-16 rounded-full grid place-items-center text-black active:scale-95 transition shadow-lg ${
-            playing
-              ? 'bg-gradient-to-br from-zinc-100 to-zinc-300'
-              : 'bg-gradient-to-br from-cyan-300 via-violet-300 to-pink-300 shadow-[0_0_35px_rgba(167,139,250,0.45)]'
+          className={`hw-round w-16 h-16 rounded-full grid place-items-center ${
+            playing ? 'glow-onair text-emerald-200' : 'glow-play text-zinc-100'
           }`}
           aria-label={playing ? 'Pause' : 'Play'}
         >
@@ -222,20 +220,23 @@ export default function Mixer() {
         </button>
         <button
           onClick={() => engine.skip()}
-          className="w-11 h-11 rounded-full grid place-items-center text-zinc-300 bg-white/5 hover:bg-white/10 active:scale-95 transition"
+          className="hw-round w-11 h-11 rounded-full grid place-items-center text-zinc-300"
           aria-label="Next"
         >
           <Icon.Next />
         </button>
       </div>
 
-      <div className="text-center text-[11px] text-zinc-500 min-h-[1rem] truncate px-1" title={status}>
+      {/* display strip */}
+      <div className="hw-screen px-3 py-1.5 text-center text-[10px] font-mono text-cyan-100/70 truncate" title={status}>
         {status}
       </div>
 
-      {/* channel meters */}
+      {/* channel meters behind glass */}
       <div className="flex justify-center">
-        <VUMeter />
+        <div className="hw-screen px-4 py-2.5">
+          <VUMeter />
+        </div>
       </div>
 
       {/* crossfader */}
@@ -260,33 +261,37 @@ export default function Mixer() {
       {/* fx pad */}
       <FXPad />
 
-      {/* auto dj + fade length */}
+      {/* auto dj (latching switch) + fade length */}
       <div className="flex items-center justify-between gap-3">
-        <button
-          onClick={() => engine.setAutoDJ(!autoDJ)}
-          className={`flex items-center gap-2 text-[11px] font-semibold tracking-wider px-3 py-2 rounded-xl border transition ${
-            autoDJ
-              ? 'border-violet-400/40 bg-violet-400/10 text-violet-200'
-              : 'border-white/10 text-zinc-500'
-          }`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${autoDJ ? 'bg-violet-300 pulse-soft' : 'bg-zinc-600'}`}
-          />
-          AUTO DJ
-        </button>
-        <div className="flex items-center gap-1.5 text-zinc-400">
+        <div className="fx-socket flex-1">
+          <button
+            onClick={() => engine.setAutoDJ(!autoDJ)}
+            style={{ '--pad': '#a78bfa' }}
+            className={`fx-pad w-full h-9 flex items-center justify-center gap-2 ${autoDJ ? '' : 'pad-off'}`}
+            title="Automatic crossfades at each track's mix-out point"
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${autoDJ ? 'bg-violet-300 pulse-soft' : 'bg-zinc-700'}`}
+            />
+            <span className="fx-label font-display text-[9px] font-bold tracking-[0.2em]">
+              AUTO DJ
+            </span>
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => engine.setCrossfadeSeconds(fadeSeconds - 1)}
-            className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-sm"
+            className="hw-round w-7 h-7 rounded-lg text-sm text-zinc-300"
             aria-label="Shorter fade"
           >
             –
           </button>
-          <span className="text-xs font-mono w-8 text-center">{fadeSeconds}s</span>
+          <span className="hw-screen px-2 py-1 w-10 text-center text-[11px] font-mono text-cyan-100/80">
+            {fadeSeconds}s
+          </span>
           <button
             onClick={() => engine.setCrossfadeSeconds(fadeSeconds + 1)}
-            className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-sm"
+            className="hw-round w-7 h-7 rounded-lg text-sm text-zinc-300"
             aria-label="Longer fade"
           >
             +
@@ -294,19 +299,20 @@ export default function Mixer() {
         </div>
       </div>
 
-      {/* talkover */}
-      <button
-        onClick={() => engine.toggleDuck(!ducked)}
-        className={`w-full flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.2em] px-3 py-2.5 rounded-xl border transition ${
-          ducked
-            ? 'border-amber-300/50 bg-amber-400/15 text-amber-200'
-            : 'border-white/10 text-zinc-500 hover:text-zinc-300'
-        }`}
-        title="Duck the music to talk over it (T)"
-      >
-        <span className={`w-1.5 h-1.5 rounded-full ${ducked ? 'bg-amber-300 pulse-soft' : 'bg-zinc-600'}`} />
-        {ducked ? 'TALKOVER ON — TAP TO RESTORE' : '🎙 TALKOVER'}
-      </button>
+      {/* talkover (latching switch) */}
+      <div className="fx-socket">
+        <button
+          onClick={() => engine.toggleDuck(!ducked)}
+          style={{ '--pad': '#fbbf24' }}
+          className={`fx-pad w-full h-10 flex items-center justify-center gap-2.5 ${ducked ? '' : 'pad-off'}`}
+          title="Duck the music to talk over it (T)"
+        >
+          <span className={`w-2 h-2 rounded-full ${ducked ? 'bg-amber-300 pulse-soft' : 'bg-zinc-700'}`} />
+          <span className="fx-label font-display text-[10px] font-bold tracking-[0.25em]">
+            TALKOVER
+          </span>
+        </button>
+      </div>
 
       {/* master volume */}
       <div className="flex items-center gap-3">
