@@ -243,6 +243,8 @@ export default function Deck({ deck }) {
           playing={playing}
           energy={d.track?.energy ?? 3}
           color={c.hex}
+          interactive={!!d.track && d.duration > 0}
+          onSeek={(frac) => engine.seekTo(deck, frac * d.duration)}
         />
         <div className="flex justify-between text-[11px] font-mono text-zinc-500 mt-1 px-0.5">
           <span>{d.track ? fmtTime(d.progress) : '–:––'}</span>

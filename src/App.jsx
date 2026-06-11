@@ -201,11 +201,13 @@ export default function App() {
           break
         case 'ArrowRight':
           e.preventDefault()
-          engine.skip()
+          if (e.shiftKey) engine.nudge(10)
+          else engine.skip()
           break
         case 'ArrowLeft':
           e.preventDefault()
-          engine.back()
+          if (e.shiftKey) engine.nudge(-10)
+          else engine.back()
           break
         case 'ArrowUp':
           e.preventDefault()

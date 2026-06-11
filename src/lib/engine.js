@@ -500,6 +500,25 @@ export function skip() {
   beginTransition({ fade: Math.min(2, s.settings.fadeSeconds) })
 }
 
+// Jump within a deck's playing track (waveform scrub / Shift+arrows / DJ).
+export function seekTo(deck, seconds) {
+  const d = S().decks[deck]
+  if (!d.track) return
+  const dur = d.duration || 0
+  const sec = Math.max(0, dur > 0 ? Math.min(seconds, dur - 0.4) : seconds)
+  watch[deck] = { p: -1, at: Date.now() } // a seek is not a stall
+  safe(players[deck], 'seekTo', sec, true)
+  set((s) => ({
+    decks: { ...s.decks, [deck]: { ...s.decks[deck], progress: sec } },
+  }))
+}
+
+export function nudge(delta) {
+  const s = S()
+  const d = s.decks[s.active]
+  if (d.track) seekTo(s.active, d.progress + delta)
+}
+
 export function back() {
   const s = S()
   const act = s.decks[s.active]

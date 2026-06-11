@@ -371,7 +371,8 @@ export default function SettingsModal() {
             </button>
           </div>
           <p className="text-[10px] leading-relaxed text-zinc-600">
-            Shortcuts: Space play/pause · ← back · → skip · ↑↓ master volume · T talkover · C chat.
+            Shortcuts: Space play/pause · ← back · → skip · Shift+←→ seek ±10s · ↑↓ master volume ·
+            T talkover · C chat. Click or drag the waveform to seek, YouTube-style.
           </p>
           <p className="text-[10px] leading-relaxed text-zinc-600">
             Playback uses the official YouTube player — sign into your YouTube Premium account in

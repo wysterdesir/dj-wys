@@ -120,6 +120,16 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'seek_track',
+    description:
+      "Jump to a position WITHIN the currently playing track — e.g. past a long intro the host complains about, or back to replay a moment. Position is absolute seconds from the track's start.",
+    input_schema: {
+      type: 'object',
+      properties: { seconds: { type: 'number' } },
+      required: ['seconds'],
+    },
+  },
+  {
     name: 'pause_music',
     description: 'Pause playback (speeches, toasts, announcements).',
     input_schema: { type: 'object', properties: {} },
@@ -357,6 +367,15 @@ async function executeTool(name, input) {
       engine.skip()
       pushChat('event', '⏭ Skipped')
       return had ? 'Skipped to the next track.' : 'Nothing queued to skip to — queue more first.'
+    }
+    case 'seek_track': {
+      const s = S()
+      const d = s.decks[s.active]
+      if (!d.track) return 'Nothing is playing right now.'
+      const sec = Math.max(0, Math.min(input.seconds, d.duration > 0 ? d.duration - 5 : input.seconds))
+      engine.seekTo(s.active, sec)
+      pushChat('event', `⏩ Jumped to ${fmtTime(sec)}`)
+      return `Seeked "${d.track.title}" to ${fmtTime(sec)}.`
     }
     case 'pause_music':
       engine.pauseMusic()

@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
+import { fmtTime } from '../lib/time'
 
 // Simulated waveform: the YouTube stream's raw audio is not accessible to
 // the page (browser security), so bars are seeded per-track and animated by
 // playback position + the track's energy rating. Looks alive, stays honest.
+// It doubles as the seek bar: click or drag anywhere to jump, YouTube-style.
 
 function hashStr(s) {
   let h = 2166136261
@@ -44,10 +46,56 @@ export function amplitudeAt(videoId, frac, energy = 3, t = 0) {
   return Math.min(1, v * (0.8 + 0.35 * Math.abs(Math.sin(t / 170))))
 }
 
-export default function Waveform({ videoId, progress, duration, playing, energy = 3, color }) {
+export default function Waveform({
+  videoId,
+  progress,
+  duration,
+  playing,
+  energy = 3,
+  color,
+  interactive = false,
+  onSeek,
+}) {
   const ref = useRef(null)
   const live = useRef({})
-  live.current = { videoId, progress, duration, playing, energy, color }
+  live.current = { videoId, progress, duration, playing, energy, color, interactive, onSeek }
+  const ux = useRef({ hover: null, scrub: null })
+
+  const fracFrom = (e) => {
+    const r = ref.current.getBoundingClientRect()
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
+  }
+  const onPointerDown = (e) => {
+    if (!live.current.interactive) return
+    e.preventDefault()
+    ref.current.setPointerCapture(e.pointerId)
+    ux.current.scrub = fracFrom(e)
+  }
+  const onPointerMove = (e) => {
+    if (!live.current.interactive) return
+    const f = fracFrom(e)
+    if (ux.current.scrub != null) ux.current.scrub = f
+    else ux.current.hover = f
+  }
+  const onPointerUp = (e) => {
+    if (ux.current.scrub != null) {
+      live.current.onSeek?.(ux.current.scrub)
+      ux.current.scrub = null
+      ux.current.hover = null
+      try {
+        ref.current.releasePointerCapture(e.pointerId)
+      } catch {
+        /* fine */
+      }
+    }
+  }
+  const onPointerLeave = () => {
+    ux.current.hover = null
+  }
+  const onPointerCancel = () => {
+    ux.current.scrub = null
+    ux.current.hover = null
+  }
 
   useEffect(() => {
     const canvas = ref.current
@@ -102,11 +150,41 @@ export default function Waveform({ videoId, progress, duration, playing, energy 
         ctx.fillRect(frac * canvas.width - 1, mid - canvas.height * 0.46, 2, canvas.height * 0.92)
       }
 
+      // hover / scrub ghost playhead + time pill (YouTube-style seek preview)
+      const { interactive, duration: dur2 } = live.current
+      const ix = ux.current.scrub ?? ux.current.hover
+      if (interactive && ix != null && videoId) {
+        const x = ix * canvas.width
+        ctx.fillStyle = ux.current.scrub != null ? color : 'rgba(255,255,255,0.5)'
+        ctx.fillRect(x - 1, 0, 2, canvas.height)
+        const label = fmtTime(ix * (dur2 || 0))
+        ctx.font = '600 21px ui-monospace, SFMono-Regular, monospace'
+        const tw = ctx.measureText(label).width + 18
+        const px = Math.min(Math.max(x - tw / 2, 2), canvas.width - tw - 2)
+        ctx.fillStyle = 'rgba(0,0,0,0.85)'
+        ctx.beginPath()
+        ctx.roundRect(px, 2, tw, 30, 8)
+        ctx.fill()
+        ctx.fillStyle = ux.current.scrub != null ? color : 'rgba(255,255,255,0.9)'
+        ctx.fillText(label, px + 9, 25)
+      }
+
       raf = requestAnimationFrame(draw)
     }
     raf = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  return <canvas ref={ref} className="w-full h-12 lg:h-16 block" />
+  return (
+    <canvas
+      ref={ref}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+      onPointerCancel={onPointerCancel}
+      className={`w-full h-12 lg:h-16 block ${interactive ? 'cursor-pointer' : ''}`}
+      style={interactive ? { touchAction: 'none' } : undefined}
+    />
+  )
 }
