@@ -368,11 +368,11 @@ export function warmup() {
 // ---------------------------------------------------------------- firing
 
 export const FX_LIST = [
-  { id: 'air_horn', icon: '📯', label: 'HORN', hint: 'Triple air horn — celebration peaks' },
-  { id: 'riser', icon: '🚀', label: 'RISER', hint: 'Sweep up ~3.5s — press just before a drop or blend' },
-  { id: 'drop', icon: '💥', label: 'DROP', hint: 'Sub boom — land it on the transition' },
-  { id: 'laser', icon: '⚡', label: 'LASER', hint: 'Three zaps with echo — dancefloor peaks' },
-  { id: 'brake', icon: '🌀', label: 'BRAKE', hint: 'Slow the track down and blend into the next' },
+  { id: 'air_horn', icon: '📯', label: 'HORN', color: '#fbbf24', hint: 'Triple air horn — celebration peaks' },
+  { id: 'riser', icon: '🚀', label: 'RISER', color: '#22d3ee', hint: 'Sweep up ~3.5s — press just before a drop or blend' },
+  { id: 'drop', icon: '💥', label: 'DROP', color: '#ef4444', hint: 'Sub boom — land it on the transition' },
+  { id: 'laser', icon: '⚡', label: 'LASER', color: '#34d399', hint: 'Three zaps with echo — dancefloor peaks' },
+  { id: 'brake', icon: '🌀', label: 'BRAKE', color: '#a78bfa', hint: 'Slow the track down and blend into the next' },
 ]
 
 const COOLDOWN = { air_horn: 8000, riser: 12000, drop: 6000, laser: 8000, brake: 20000 }

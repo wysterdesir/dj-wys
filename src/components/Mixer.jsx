@@ -117,26 +117,28 @@ function FXPad() {
           const cooling = waitMs > 0
           const disabled = cooling || ducked
           return (
-            <button
-              key={f.id}
-              title={ducked ? 'Effects are off during talkover' : f.hint}
-              disabled={disabled}
-              onClick={() => {
-                fx.warmup()
-                const r = fx.fire(f.id)
-                if (!r.ok && r.reason !== 'cooling down') toast(r.reason)
-              }}
-              className={`flex flex-col items-center gap-0.5 py-2 rounded-xl border transition active:scale-90 ${
-                disabled
-                  ? 'border-white/[0.05] text-zinc-700 cursor-not-allowed'
-                  : 'border-white/10 text-zinc-300 hover:border-violet-400/40 hover:bg-violet-400/10'
-              }`}
-            >
-              <span className="text-sm leading-none">{f.icon}</span>
-              <span className="text-[8px] font-semibold tracking-wider">
-                {cooling ? `${Math.ceil(waitMs / 1000)}s` : f.label}
-              </span>
-            </button>
+            <div key={f.id} className="fx-socket">
+              <button
+                title={ducked ? 'Effects are off during talkover' : f.hint}
+                disabled={disabled}
+                onClick={() => {
+                  fx.warmup()
+                  const r = fx.fire(f.id)
+                  if (!r.ok && r.reason !== 'cooling down') toast(r.reason)
+                }}
+                style={{ '--pad': f.color }}
+                className="fx-pad w-full h-11 lg:h-12 flex flex-col items-center justify-center gap-px"
+              >
+                <span className="fx-label font-display text-[9px] font-bold tracking-[0.14em]">
+                  {f.label}
+                </span>
+                {cooling && (
+                  <span className="text-[8px] font-mono text-zinc-600 leading-none">
+                    {Math.ceil(waitMs / 1000)}s
+                  </span>
+                )}
+              </button>
+            </div>
           )
         })}
       </div>
