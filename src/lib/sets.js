@@ -50,18 +50,19 @@ function archiveCurrent(endedAt = Date.now()) {
 }
 
 function resetLive(name) {
-  useStore.setState({
+  useStore.setState((s) => ({
     queue: [],
     history: [],
     chat: [],
     apiHistory: [],
+    chatEpoch: (s.chatEpoch || 0) + 1, // invalidate any in-flight DJ loop
     eventPlan: '',
     banner: '',
     energy: 3,
     currentSet: newSetObj(name),
     lastActiveAt: Date.now(),
     lastNowPlaying: null,
-  })
+  }))
 }
 
 // End the night (or start a fresh one — same move from the other side):

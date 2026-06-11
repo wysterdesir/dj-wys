@@ -57,6 +57,7 @@ export const useStore = create(
       // ---------- chat ----------
       chat: [], // { id, role: 'user'|'dj'|'event'|'error', text, chips: [] }
       apiHistory: [], // raw Anthropic message objects (incl. tool blocks)
+      chatEpoch: 0, // bumped whenever the conversation is reset — aborts in-flight loops
       aiBusy: false,
 
       // ---------- ui ----------

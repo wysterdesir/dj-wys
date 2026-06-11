@@ -250,16 +250,16 @@ function pushChat(role, text, extra = {}) {
   set((s) => ({ chat: [...s.chat, { id: uid(), role, text, ...extra }] }))
 }
 
-// Keep API history bounded; it must start with a plain user text message
-// (never an orphaned tool_result) or the API rejects the request.
+// Keep API history bounded AND well-formed: it must open with a plain user
+// text message — never an orphaned tool_result (which can be left behind if
+// a set reset wiped the history mid-tool-loop). Sanitizing on every read
+// also self-heals any bad history that got persisted by older versions.
 function trimmedHistory() {
   let h = S().apiHistory
-  if (h.length <= 36) return h
-  h = h.slice(-36)
-  const startIdx = h.findIndex(
-    (m) => m.role === 'user' && typeof m.content === 'string'
-  )
-  return startIdx === -1 ? h.slice(-2) : h.slice(startIdx)
+  if (h.length > 36) h = h.slice(-36)
+  const startIdx = h.findIndex((m) => m.role === 'user' && typeof m.content === 'string')
+  if (startIdx === -1) return []
+  return startIdx === 0 ? h : h.slice(startIdx)
 }
 
 function pushApi(msg) {
@@ -476,8 +476,15 @@ export async function sendToDJ(text, { auto = false } = {}) {
     maxRetries: 2,
   })
 
+  // if the conversation gets reset while we're mid-loop (end_set, clear,
+  // auto-archive), stop touching it — appending anything would orphan
+  // tool_result blocks and poison every later request
+  const epoch0 = S().chatEpoch
+  const aborted = () => S().chatEpoch !== epoch0
+
   try {
     for (let i = 0; i < 8; i++) {
+      if (aborted()) break
       const response = await client.messages.create({
         model: S().settings.model,
         max_tokens: 4096,
@@ -489,10 +496,12 @@ export async function sendToDJ(text, { auto = false } = {}) {
         tools: TOOLS,
       })
 
+      if (aborted()) break // reset happened while waiting on the API
       pushApi({ role: 'assistant', content: response.content })
 
       if (response.stop_reason === 'tool_use') {
         const results = []
+        let setEnded = false
         for (const block of response.content) {
           if (block.type !== 'tool_use') continue
           let out
@@ -502,7 +511,11 @@ export async function sendToDJ(text, { auto = false } = {}) {
             out = `Tool failed: ${e.message}`
           }
           results.push({ type: 'tool_result', tool_use_id: block.id, content: out })
+          if (block.name === 'end_set') setEnded = true
         }
+        // end_set archives and resets the conversation — it is terminal:
+        // no receipt to append, nothing more to say
+        if (setEnded || aborted()) break
         pushApi({ role: 'user', content: results })
         continue
       }
@@ -512,7 +525,7 @@ export async function sendToDJ(text, { auto = false } = {}) {
         .map((b) => b.text)
         .join('\n')
         .trim()
-      if (finalText) pushChat('dj', finalText)
+      if (finalText && !aborted()) pushChat('dj', finalText)
       break
     }
   } catch (e) {

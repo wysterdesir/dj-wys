@@ -371,7 +371,14 @@ export default function SettingsModal() {
             <button
               onClick={() => {
                 if (confirm('Clear the chat, queue, and history?')) {
-                  useStore.setState({ chat: [], apiHistory: [], queue: [], history: [], eventPlan: '' })
+                  useStore.setState((s) => ({
+                    chat: [],
+                    apiHistory: [],
+                    chatEpoch: (s.chatEpoch || 0) + 1,
+                    queue: [],
+                    history: [],
+                    eventPlan: '',
+                  }))
                   toast('Cleared')
                 }
               }}
