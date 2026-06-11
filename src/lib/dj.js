@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { useStore, uid, toast } from '../store'
 import * as engine from './engine'
 import * as sets from './sets'
+import { fire as fireEffect } from './fx'
 import {
   searchTrack,
   SearchError,
@@ -156,6 +157,18 @@ const TOOLS = [
       type: 'object',
       properties: { on: { type: 'boolean' } },
       required: ['on'],
+    },
+  },
+  {
+    name: 'play_effect',
+    description:
+      "Fire a one-shot crowd effect over the music: 'air_horn' (celebration peaks), 'riser' (3.5s build — fire it just BEFORE a drop or transition), 'drop' (sub boom — land it ON the moment), 'laser' (dancefloor zaps), 'brake' (slow the track down and blend into the next — a theatrical transition). Use SPARINGLY: at genuine peaks and big transitions only, at most one every few minutes unless the host asks. Never during dinner, speeches, or low-energy stretches. Effects have cooldowns and are blocked during talkover.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        effect: { type: 'string', enum: ['air_horn', 'riser', 'drop', 'laser', 'brake'] },
+      },
+      required: ['effect'],
     },
   },
   {
@@ -400,6 +413,15 @@ async function executeTool(name, input) {
       engine.toggleDuck(input.on)
       pushChat('event', input.on ? '🎙 Talkover — music ducked' : '🎙 Music back up')
       return input.on ? 'Music ducked to talkover level.' : 'Music restored to full volume.'
+    }
+    case 'play_effect': {
+      const r = fireEffect(input.effect)
+      if (!r.ok) {
+        return `Effect not fired: ${r.reason}${r.waitMs ? ` (~${Math.ceil(r.waitMs / 1000)}s left)` : ''}.`
+      }
+      const icons = { air_horn: '📯', riser: '🚀', drop: '💥', laser: '⚡', brake: '🌀' }
+      pushChat('event', `${icons[input.effect]} ${input.effect.replace('_', ' ')}!`)
+      return `Fired ${input.effect}.`
     }
     case 'end_set': {
       const n = sets.snapshotTracks().length

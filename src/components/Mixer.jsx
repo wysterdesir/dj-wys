@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { useStore } from '../store'
+import { useEffect, useRef, useState } from 'react'
+import { useStore, toast } from '../store'
 import * as engine from '../lib/engine'
+import * as fx from '../lib/fx'
 import { amplitudeAt } from './Waveform'
 
 const Icon = {
@@ -93,6 +94,56 @@ function VUMeter() {
   )
 }
 
+// The FX pad: one-shot crowd effects with per-button cooldowns.
+function FXPad() {
+  const cooldowns = useStore((s) => s.fxCooldowns)
+  const ducked = useStore((s) => s.ducked)
+  const [, forceTick] = useState(0)
+
+  // re-render once a second while anything is cooling down
+  useEffect(() => {
+    const anyActive = Object.values(cooldowns).some((t) => t > Date.now())
+    if (!anyActive) return
+    const iv = setInterval(() => forceTick((n) => n + 1), 1000)
+    return () => clearInterval(iv)
+  }, [cooldowns])
+
+  return (
+    <div>
+      <div className="text-[10px] tracking-[0.25em] text-zinc-600 text-center mb-1.5">FX</div>
+      <div className="grid grid-cols-5 gap-1.5">
+        {fx.FX_LIST.map((f) => {
+          const waitMs = Math.max(0, (cooldowns[f.id] || 0) - Date.now())
+          const cooling = waitMs > 0
+          const disabled = cooling || ducked
+          return (
+            <button
+              key={f.id}
+              title={ducked ? 'Effects are off during talkover' : f.hint}
+              disabled={disabled}
+              onClick={() => {
+                fx.warmup()
+                const r = fx.fire(f.id)
+                if (!r.ok && r.reason !== 'cooling down') toast(r.reason)
+              }}
+              className={`flex flex-col items-center gap-0.5 py-2 rounded-xl border transition active:scale-90 ${
+                disabled
+                  ? 'border-white/[0.05] text-zinc-700 cursor-not-allowed'
+                  : 'border-white/10 text-zinc-300 hover:border-violet-400/40 hover:bg-violet-400/10'
+              }`}
+            >
+              <span className="text-sm leading-none">{f.icon}</span>
+              <span className="text-[8px] font-semibold tracking-wider">
+                {cooling ? `${Math.ceil(waitMs / 1000)}s` : f.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function EnergyMeter() {
   const energy = useStore((s) => s.energy)
   return (
@@ -154,7 +205,10 @@ export default function Mixer() {
           <Icon.Prev />
         </button>
         <button
-          onClick={() => engine.togglePlay()}
+          onClick={() => {
+            fx.warmup() // bless the FX audio context inside a real gesture
+            engine.togglePlay()
+          }}
           className={`w-16 h-16 rounded-full grid place-items-center text-black active:scale-95 transition shadow-lg ${
             playing
               ? 'bg-gradient-to-br from-zinc-100 to-zinc-300'
@@ -200,6 +254,9 @@ export default function Mixer() {
           aria-label="Crossfader"
         />
       </div>
+
+      {/* fx pad */}
+      <FXPad />
 
       {/* auto dj + fade length */}
       <div className="flex items-center justify-between gap-3">

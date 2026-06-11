@@ -12,8 +12,9 @@ if (import.meta.env.DEV) {
     import('./lib/engine'),
     import('./lib/sets'),
     import('./lib/search'),
-  ]).then(([s, e, sets, search]) => {
-    window.__djwys = { store: s.useStore, engine: e, sets, search }
+    import('./lib/fx'),
+  ]).then(([s, e, sets, search, fx]) => {
+    window.__djwys = { store: s.useStore, engine: e, sets, search, fx }
   })
 }
 

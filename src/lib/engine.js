@@ -234,6 +234,7 @@ function loadOnDeck(deck, track, { andPlay = true } = {}) {
       : s.lastNowPlaying,
   }))
   const startSeconds = startAtOf(track)
+  safe(players[deck], 'setPlaybackRate', 1) // undo any BRAKE leftovers
   if (andPlay) {
     if (cuedFor[deck] === track.videoId) {
       // pre-buffered earlier — instant start
@@ -517,6 +518,30 @@ export function nudge(delta) {
   const s = S()
   const d = s.decks[s.active]
   if (d.track) seekTo(s.active, d.progress + delta)
+}
+
+// FX "BRAKE": slow the live deck down over ~0.9s (YT quantizes the rate —
+// the synth zip in fx.js sells the illusion), then blend into the next
+// track. With an empty queue it snaps back to speed instead.
+export function brakeAndBlend() {
+  const s = S()
+  const deck = s.active
+  if (s.decks[deck].state !== 'playing' || s.transition) return
+  const p = players[deck]
+  const t0 = performance.now()
+  addAnim((t) => {
+    const k = Math.min(1, (t - t0) / 900)
+    safe(p, 'setPlaybackRate', Math.max(0.25, 1 - 0.75 * k))
+    if (k >= 1) {
+      if (S().queue.length > 0 && !S().transition) {
+        beginTransition({ fade: 1.5 })
+      } else {
+        safe(p, 'setPlaybackRate', 1)
+      }
+      return true
+    }
+    return false
+  })
 }
 
 export function back() {

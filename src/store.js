@@ -20,6 +20,7 @@ export const useStore = create(
         youtubeKey: '',
         model: 'claude-opus-4-8',
         fadeSeconds: 8,
+        fxLevel: 0.5, // FX pad volume
         autoRefill: true,
         videoMode: 'platter', // platter | cinema
         wakeLock: true,
@@ -38,6 +39,7 @@ export const useStore = create(
       needsTap: false, // mobile autoplay was blocked — show tap overlay
       started: false, // set has been started at least once
       ducked: false, // talkover: music dipped under speech
+      fxCooldowns: {}, // effect id → timestamp it becomes ready again
 
       // ---------- queue ----------
       queue: [],

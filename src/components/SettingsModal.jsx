@@ -271,6 +271,16 @@ export default function SettingsModal() {
               ))}
             </select>
           </Row>
+          <Row label={`FX pad volume — ${Math.round((settings.fxLevel ?? 0.5) * 100)}%`}>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={Math.round((settings.fxLevel ?? 0.5) * 100)}
+              onChange={(e) => setSetting('fxLevel', +e.target.value / 100)}
+              className="fader w-full"
+            />
+          </Row>
           <Row label={`Default crossfade — ${settings.fadeSeconds}s`}>
             <input
               type="range"
