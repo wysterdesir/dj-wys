@@ -365,10 +365,8 @@ export function beginTransition({ fade } = {}) {
   const to = other(from)
   const seconds = fade ?? s.settings.fadeSeconds
 
-  set({
-    transition: { to, until: Date.now() + seconds * 1000 },
-    queue: s.queue.slice(1),
-  })
+  set({ transition: { to, until: Date.now() + seconds * 1000 } })
+  setQueue((q) => q.filter((t) => t.id !== next.id)) // consume exactly this entry
   loadOnDeck(to, next)
   ensurePlaybackStarts(to)
 
@@ -377,15 +375,14 @@ export function beginTransition({ fade } = {}) {
 }
 
 function finishTransition(from, to) {
-  const s = S()
-  const old = s.decks[from]
+  const old = S().decks[from]
   safe(players[from], 'stopVideo')
-  set({
+  set((s) => ({
     active: to,
     transition: null,
     decks: { ...s.decks, [from]: emptyDeck() },
     history: old.track ? [...s.history, old.track].slice(-80) : s.history,
-  })
+  }))
   applyVolumes()
 }
 
@@ -483,7 +480,8 @@ export function startSet() {
   }
   // this call sits inside the user's gesture — bless the idle deck too
   primeDeck(other(s.active), s.queue[1]?.videoId || next.videoId)
-  set({ queue: s.queue.slice(1), started: true, xfade: s.active === 'B' ? 1 : 0 })
+  set({ started: true, xfade: s.active === 'B' ? 1 : 0 })
+  setQueue((q) => q.filter((t) => t.id !== next.id)) // consume exactly this entry
   loadOnDeck(s.active, next)
   applyVolumes()
 }
@@ -546,6 +544,13 @@ export function brakeAndBlend() {
 
 export function back() {
   const s = S()
+  // Never mutate the queue when the transition can't actually run — the
+  // old version did, and a double-press mid-blend inserted the playing
+  // track twice with the SAME id, corrupting the keyed queue rendering.
+  if (s.transition) {
+    toast('Still blending — one moment')
+    return
+  }
   const act = s.decks[s.active]
   if (act.track && act.progress > 8) {
     safe(players[s.active], 'seekTo', 0, true)
@@ -556,25 +561,50 @@ export function back() {
     if (act.track) safe(players[s.active], 'seekTo', 0, true)
     return
   }
-  // requeue current, pull previous back on
-  const requeue = act.track ? [{ ...act.track }, ...s.queue] : s.queue
-  set({
-    history: s.history.slice(0, -1),
-    queue: [{ ...prev }, ...requeue],
-  })
+  // requeue current + pull previous back on — always under FRESH ids
+  set((st) => ({ history: st.history.slice(0, -1) }))
+  setQueue((q) => [
+    { ...prev, id: uid() },
+    ...(act.track ? [{ ...act.track, id: uid() }] : []),
+    ...q,
+  ])
   if (act.track) beginTransition({ fade: 1.2 })
   else startSet()
 }
 
 // ---------------------------------------------------------------- queue ops
 
+// EVERY queue write funnels through here. It enforces the two invariants
+// the keyed UI depends on: every entry has a videoId, and no two entries
+// ever share an id. A duplicate id would corrupt React's list rendering
+// (ghost rows that can't be removed) — and since the queue is persisted,
+// one corruption would outlive reloads. Dupes are dropped with a warning.
+export function setQueue(updater) {
+  set((s) => {
+    const proposed = typeof updater === 'function' ? updater(s.queue, s) : updater
+    const seen = new Set()
+    const clean = []
+    for (const t of proposed) {
+      if (!t || !t.videoId) continue
+      if (t.id && seen.has(t.id)) {
+        console.warn('[queue] dropped duplicate entry', t.id, t.title)
+        continue
+      }
+      const item = t.id ? t : { ...t, id: uid() }
+      seen.add(item.id)
+      clean.push(item)
+    }
+    return { queue: clean }
+  })
+}
+
 export function queueTracks(tracks, mode = 'append') {
   // fresh id even when re-queueing a history item, so list keys never collide
   const items = tracks.map((t) => ({ ...t, id: uid() }))
-  set((s) => {
-    if (mode === 'replace_upcoming') return { queue: items }
-    if (mode === 'play_next') return { queue: [...items, ...s.queue] }
-    return { queue: [...s.queue, ...items] }
+  setQueue((q) => {
+    if (mode === 'replace_upcoming') return items
+    if (mode === 'play_next') return [...items, ...q]
+    return [...q, ...items]
   })
   // revive playback if the set was running but the queue had run dry
   const s = S()
@@ -587,35 +617,35 @@ export function queueTracks(tracks, mode = 'append') {
 }
 
 export function removeFromQueue(id) {
-  set((s) => ({ queue: s.queue.filter((t) => t.id !== id) }))
+  setQueue((q) => q.filter((t) => t.id !== id))
 }
 
 export function moveToFront(id) {
-  set((s) => {
-    const t = s.queue.find((x) => x.id === id)
-    if (!t) return {}
-    return { queue: [t, ...s.queue.filter((x) => x.id !== id)] }
+  setQueue((q) => {
+    const t = q.find((x) => x.id === id)
+    if (!t) return q
+    return [t, ...q.filter((x) => x.id !== id)]
   })
 }
 
 // Drag-reorder: insert the dragged track before the target track.
 export function moveBefore(dragId, targetId) {
   if (dragId === targetId) return
-  set((s) => {
-    const t = s.queue.find((x) => x.id === dragId)
-    if (!t) return {}
-    const rest = s.queue.filter((x) => x.id !== dragId)
+  setQueue((q) => {
+    const t = q.find((x) => x.id === dragId)
+    if (!t) return q
+    const rest = q.filter((x) => x.id !== dragId)
     const idx = rest.findIndex((x) => x.id === targetId)
-    if (idx === -1) return {}
-    return { queue: [...rest.slice(0, idx), t, ...rest.slice(idx)] }
+    if (idx === -1) return q
+    return [...rest.slice(0, idx), t, ...rest.slice(idx)]
   })
 }
 
 export function moveToEnd(id) {
-  set((s) => {
-    const t = s.queue.find((x) => x.id === id)
-    if (!t) return {}
-    return { queue: [...s.queue.filter((x) => x.id !== id), t] }
+  setQueue((q) => {
+    const t = q.find((x) => x.id === id)
+    if (!t) return q
+    return [...q.filter((x) => x.id !== id), t]
   })
 }
 
@@ -629,7 +659,7 @@ export function playNowFromQueue(id, deckPref) {
   }
   const t = s.queue.find((x) => x.id === id)
   if (!t) return
-  set({ queue: s.queue.filter((x) => x.id !== id) })
+  setQueue((q) => q.filter((x) => x.id !== id))
   const st = S()
   if (!st.decks[st.active].track && deckPref && !st.decks[deckPref].track) {
     set({ active: deckPref, xfade: deckPref === 'B' ? 1 : 0, started: true })

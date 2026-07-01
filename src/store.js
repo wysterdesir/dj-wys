@@ -11,6 +11,18 @@ export const emptyDeck = () => ({
   duration: 0,
 })
 
+// Duplicate ids in a persisted track list break React's keyed rendering
+// (ghost rows that can't be removed), so heal them before the first render.
+const dedupeTracks = (list) => {
+  if (!Array.isArray(list)) return []
+  const seen = new Set()
+  return list.filter((t) => {
+    if (!t || !t.videoId || seen.has(t.id)) return false
+    seen.add(t.id)
+    return true
+  })
+}
+
 export const useStore = create(
   persist(
     (set) => ({
@@ -85,6 +97,12 @@ export const useStore = create(
         lastNowPlaying: s.lastNowPlaying,
         chatOpen: s.chatOpen,
       }),
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted || {}) }
+        merged.queue = dedupeTracks(merged.queue)
+        merged.history = dedupeTracks(merged.history)
+        return merged
+      },
     }
   )
 )

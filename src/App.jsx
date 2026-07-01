@@ -181,9 +181,19 @@ export default function App() {
   }, [chatOpen, chatLen])
 
   // gig lifecycle: ensure a set exists; auto-archive a stale previous gig;
+  // heal any duplicate-id corruption older versions may have persisted;
   // seed the free track library from everything we already know
   useEffect(() => {
     initSetLifecycle()
+    const dedupe = (list) => {
+      const seen = new Set()
+      return list.filter((t) => {
+        if (!t || !t.videoId || seen.has(t.id)) return false
+        seen.add(t.id)
+        return true
+      })
+    }
+    useStore.setState((s) => ({ queue: dedupe(s.queue), history: dedupe(s.history) }))
     const s = useStore.getState()
     seedLibrary([...s.queue, ...s.history, ...s.pastSets.flatMap((r) => r.tracks)])
   }, [])
