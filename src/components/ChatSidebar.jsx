@@ -37,6 +37,17 @@ const OPENERS = [
   '⚡ Full party energy right away',
 ]
 
+// One-tap crowd reads: steer the DJ mid-party without typing a word.
+const READS = [
+  ['🔥 Packed', "The floor is PACKED — whatever we're doing is working. Keep this exact energy lane going!"],
+  ['🥶 Emptying', 'The floor is thinning out — change it up NOW and win them back with something irresistible.'],
+  ['⬆️ Energy up', 'Bring the energy up a notch over the next couple of tracks.'],
+  ['🌊 Slow down', 'Ease it down — bring the tempo and intensity down for a stretch.'],
+  ['⏪ Throwback', 'Throwback moment — hit them with a classic the whole room can sing word for word.'],
+  ['💜 More like this', 'The current track is landing — queue more in this exact lane.'],
+  ['🔀 Switch it', 'Switch lanes — take the set in a different direction for a while.'],
+]
+
 function Chip({ label, on, onClick }) {
   return (
     <button
@@ -81,9 +92,18 @@ function SetBuilder({ hasKey }) {
   const [crowd, setCrowd] = useState(null)
   const [flavors, setFlavors] = useState([])
   const [opener, setOpener] = useState(null)
+  const [starName, setStarName] = useState('')
+  const [starYear, setStarYear] = useState('')
+  const isBirthday = event === '🎂 Birthday party'
+  const yearOk = /^\d{4}$/.test(starYear)
 
   const brief = () => {
     const bits = [`We're doing: ${event}.`]
+    if (isBirthday && starName.trim()) bits.push(`The birthday star is ${starName.trim()}.`)
+    if (isBirthday && yearOk)
+      bits.push(
+        `They were born in ${starYear} — open the set as a musical journey through the decades of their life: childhood favorites first, then their teens and twenties, landing in today's sound before settling into the night's main vibe. Tell me each time we cross into a new era so I can hype it on the mic.`
+      )
     if (crowd) bits.push(`Crowd: ${crowd}.`)
     if (flavors.length) bits.push(`Lean on: ${flavors.join(', ')}.`)
     if (opener) bits.push(`Opening vibe: ${opener}.`)
@@ -94,6 +114,34 @@ function SetBuilder({ hasKey }) {
   return (
     <div className="flex flex-col gap-3.5">
       <ChipRow title="EVENT" items={EVENTS} value={event} onPick={setEvent} />
+      {isBirthday && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[9px] font-semibold tracking-[0.3em] text-zinc-600">
+            BIRTHDAY STAR · OPTIONAL
+          </span>
+          <div className="flex gap-1.5">
+            <input
+              value={starName}
+              onChange={(e) => setStarName(e.target.value)}
+              placeholder="Name"
+              className="flex-1 min-w-0 bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-white/25"
+            />
+            <input
+              value={starYear}
+              onChange={(e) => setStarYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="Born (e.g. 1986)"
+              inputMode="numeric"
+              title="Add the birth year and the DJ opens with a journey through the decades of their life"
+              className="w-28 bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-white/25"
+            />
+          </div>
+          {yearOk && (
+            <span className="text-[10px] text-violet-300/70">
+              🕰️ Decades journey unlocked — the set will travel through their eras.
+            </span>
+          )}
+        </div>
+      )}
       <ChipRow title="CROWD" items={CROWDS} value={crowd} onPick={setCrowd} />
       <ChipRow title="FLAVOR · OPTIONAL, UP TO 3" items={FLAVORS} value={flavors} onPick={setFlavors} multi />
       <ChipRow title="OPENING ENERGY" items={OPENERS} value={opener} onPick={setOpener} />
@@ -214,6 +262,23 @@ export default function ChatSidebar() {
         )}
         <div ref={endRef} />
       </div>
+
+      {/* crowd reads: one-tap steering while the party is live */}
+      {hasKey && chat.length > 0 && (
+        <div className="shrink-0 px-3 pt-2 pb-1 flex flex-wrap gap-1.5">
+          {READS.map(([label, msg]) => (
+            <button
+              key={label}
+              onClick={() => !aiBusy && sendToDJ(msg)}
+              disabled={aiBusy}
+              title={msg}
+              className="text-[10px] px-2 py-1 rounded-full border border-white/[0.08] text-zinc-500 hover:text-zinc-200 hover:border-white/25 hover:bg-white/[0.04] disabled:opacity-40 active:scale-95 transition"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* no-key banner */}
       {!hasKey && (

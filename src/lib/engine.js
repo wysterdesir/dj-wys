@@ -137,13 +137,34 @@ function onPlayerError(deck, code) {
 // ---------------------------------------------------------------- volumes
 
 // Equal-power crossfade: A fades on a cosine curve, B on a sine curve.
-// duckLevel rides on top for talkover (speeches/toasts).
+// duckLevel rides on top for talkover (speeches/toasts); each deck also
+// carries its track's remembered loudness trim (YouTube uploads vary a lot).
+export const trimOf = (s, deck) => s.trims?.[s.decks[deck].track?.videoId] ?? 1
 export function applyVolumes() {
   const s = S()
-  const gA = Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master * duckLevel
-  const gB = Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master * duckLevel
+  const gA = Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master * duckLevel * trimOf(s, 'A')
+  const gB = Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master * duckLevel * trimOf(s, 'B')
   safe(players.A, 'setVolume', Math.round(Math.max(0, Math.min(1, gA)) * 100))
   safe(players.B, 'setVolume', Math.round(Math.max(0, Math.min(1, gB)) * 100))
+}
+
+// Adjust (and remember) the loudness trim for whatever this deck is playing.
+// Keyed by videoId, so a fix made tonight still holds at the next gig.
+export function bumpTrim(deck, delta) {
+  const s = S()
+  const vid = s.decks[deck].track?.videoId
+  if (!vid) return
+  const cur = s.trims?.[vid] ?? 1
+  const next = Math.max(0.5, Math.min(1.5, Math.round((cur + delta) * 20) / 20))
+  set((st) => {
+    const trims = { ...st.trims }
+    if (next === 1) delete trims[vid] // neutral — no need to remember
+    else trims[vid] = next
+    const keys = Object.keys(trims)
+    if (keys.length > 400) for (const k of keys.slice(0, keys.length - 400)) delete trims[k]
+    return { trims }
+  })
+  applyVolumes()
 }
 
 // Talkover: smoothly dip the music under speech and bring it back.

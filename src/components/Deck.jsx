@@ -19,6 +19,7 @@ export default function Deck({ deck }) {
   const nextTrack = useStore((s) => s.queue[0])
   const activeDeckHasTrack = useStore((s) => !!s.decks[s.active].track)
   const fadeSeconds = useStore((s) => s.settings.fadeSeconds)
+  const trim = useStore((s) => s.trims?.[s.decks[deck].track?.videoId] ?? 1)
   const [dropOver, setDropOver] = useState(false)
   const c = COLORS[deck]
   const elId = `yt-deck-${deck}`
@@ -271,6 +272,36 @@ export default function Deck({ deck }) {
           {Math.round(fader * 100)}
         </span>
       </div>
+
+      {/* per-track loudness trim — remembered for this exact video forever */}
+      {d.track && (
+        <div className="flex items-center gap-3 px-1">
+          <span className="text-[10px] tracking-widest text-zinc-600 w-8">TRIM</span>
+          <button
+            onClick={() => engine.bumpTrim(deck, -0.05)}
+            className="hw-round w-7 h-7 rounded-lg text-sm text-zinc-300"
+            aria-label="Trim this track quieter"
+          >
+            –
+          </button>
+          <span
+            className={`hw-screen px-2 py-1 w-14 text-center text-[11px] font-mono ${
+              trim !== 1 ? 'text-amber-200/90' : 'text-cyan-100/70'
+            }`}
+            title="Loudness fix for this exact track — saved automatically"
+          >
+            {trim > 1 ? '+' : ''}
+            {Math.round((trim - 1) * 100)}%
+          </span>
+          <button
+            onClick={() => engine.bumpTrim(deck, 0.05)}
+            className="hw-round w-7 h-7 rounded-lg text-sm text-zinc-300"
+            aria-label="Trim this track louder"
+          >
+            +
+          </button>
+        </div>
+      )}
     </section>
   )
 }

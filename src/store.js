@@ -56,6 +56,7 @@ export const useStore = create(
       // ---------- queue ----------
       queue: [],
       history: [],
+      trims: {}, // videoId → gain multiplier (0.5–1.5): per-track loudness fix, kept forever
       energy: 3,
       eventPlan: '', // run-of-show the host gave the DJ
       banner: '', // big-screen marquee message above the decks
@@ -85,6 +86,7 @@ export const useStore = create(
         settings: s.settings,
         queue: s.queue,
         history: s.history.slice(-50),
+        trims: s.trims,
         energy: s.energy,
         chat: s.chat.slice(-80),
         apiHistory: s.apiHistory.slice(-40),
@@ -101,6 +103,7 @@ export const useStore = create(
         const merged = { ...current, ...(persisted || {}) }
         merged.queue = dedupeTracks(merged.queue)
         merged.history = dedupeTracks(merged.history)
+        if (!merged.trims || typeof merged.trims !== 'object') merged.trims = {}
         return merged
       },
     }

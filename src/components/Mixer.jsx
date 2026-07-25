@@ -53,8 +53,8 @@ function VUMeter() {
       ctx.clearRect(0, 0, cv.width, cv.height)
       const duck = engine.getDuckLevel()
       const gain = {
-        A: Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master * duck,
-        B: Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master * duck,
+        A: Math.cos((s.xfade * Math.PI) / 2) * s.faders.A * s.master * duck * engine.trimOf(s, 'A'),
+        B: Math.sin((s.xfade * Math.PI) / 2) * s.faders.B * s.master * duck * engine.trimOf(s, 'B'),
       }
       ;['A', 'B'].forEach((k, col) => {
         const d = s.decks[k]
