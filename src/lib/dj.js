@@ -18,12 +18,64 @@ import {
 } from './search'
 import { fmtTime } from './time'
 
+// Newest flagship known at build time — the safety net when the live
+// model listing can't be reached (offline, key without models scope).
+export const FALLBACK_FLAGSHIP = 'claude-opus-5'
+
 export const MODELS = [
-  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 — default DJ brain' },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 — faster & cheaper' },
+  { id: 'auto', label: 'Auto — always the newest Opus (recommended)' },
+  { id: 'claude-opus-5', label: 'Claude Opus 5 — current flagship DJ brain' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 — faster & cheaper' },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — cheapest' },
-  { id: 'claude-fable-5', label: 'Claude Fable 5 — maximum brain' },
+  { id: 'claude-fable-5', label: 'Claude Fable 5 — maximum brain, premium price' },
 ]
+
+// Pick the newest Opus-tier model from a Models API listing (created_at
+// wins). Opus is the flagship tier the app tracks; Fable/Mythos cost 2x
+// and stay a deliberate manual choice in the dropdown.
+export function newestOpusFrom(models) {
+  let best = null
+  for (const m of models) {
+    if (!m?.id?.startsWith('claude-opus-')) continue
+    if (!best || new Date(m.created_at || 0) > new Date(best.created_at || 0)) best = m
+  }
+  return best ? best.id : FALLBACK_FLAGSHIP
+}
+
+// 'auto' resolves against the live Models API (one tokenless request),
+// memoized for the session, so a future Opus 6 gets picked up the day the
+// key can see it — no app update needed. Falls back to the newest Opus
+// known at build time; failures aren't memoized, so the next send retries.
+let autoPromise = null
+export function resolveModel(selected, client) {
+  if (selected !== 'auto') return Promise.resolve(selected)
+  if (!autoPromise) {
+    autoPromise = (async () => {
+      const seen = []
+      for await (const m of client.models.list()) seen.push(m)
+      return newestOpusFrom(seen)
+    })().catch(() => {
+      autoPromise = null
+      return FALLBACK_FLAGSHIP
+    })
+  }
+  return autoPromise
+}
+
+// The Claude 5 family thinks by default, and thinking shares max_tokens
+// with the reply — give those models headroom. Effort is pinned LOW for
+// the booth models: a live party needs sub-seconds reactions, and low
+// effort on the 5 family still out-reasons the old flagships at full
+// tilt. Fable (a deliberate premium pick) runs medium for extra depth.
+function requestParams(model) {
+  if (/^claude-(fable|mythos)-5/.test(model)) {
+    return { max_tokens: 16000, output_config: { effort: 'medium' } }
+  }
+  if (/^claude-(opus|sonnet)-5/.test(model)) {
+    return { max_tokens: 8192, output_config: { effort: 'low' } }
+  }
+  return { max_tokens: 4096 }
+}
 
 const S = () => useStore.getState()
 const set = useStore.setState
@@ -483,11 +535,12 @@ export async function sendToDJ(text, { auto = false } = {}) {
   const aborted = () => S().chatEpoch !== epoch0
 
   try {
+    const model = await resolveModel(s.settings.model, client)
     for (let i = 0; i < 8; i++) {
       if (aborted()) break
       const response = await client.messages.create({
-        model: S().settings.model,
-        max_tokens: 4096,
+        model,
+        ...requestParams(model),
         system: [
           { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
           { type: 'text', text: stateBlock() },
@@ -497,6 +550,15 @@ export async function sendToDJ(text, { auto = false } = {}) {
       })
 
       if (aborted()) break // reset happened while waiting on the API
+
+      // Claude 5-family safety classifiers can decline a request (HTTP 200,
+      // stop_reason 'refusal', content possibly empty) — never expected for
+      // party music, but read stop_reason before touching content.
+      if (response.stop_reason === 'refusal') {
+        if (!aborted()) pushChat('error', 'The DJ brain declined that one — try rephrasing the request.')
+        break
+      }
+
       pushApi({ role: 'assistant', content: response.content })
 
       if (response.stop_reason === 'tool_use') {

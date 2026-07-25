@@ -30,7 +30,7 @@ export const useStore = create(
       settings: {
         anthropicKey: '',
         youtubeKey: '',
-        model: 'claude-opus-4-8',
+        model: 'auto', // resolved to the newest Opus at send time (dj.js)
         fadeSeconds: 8,
         fxLevel: 0.5, // FX pad volume
         autoRefill: true,
@@ -104,6 +104,15 @@ export const useStore = create(
         merged.queue = dedupeTracks(merged.queue)
         merged.history = dedupeTracks(merged.history)
         if (!merged.trims || typeof merged.trims !== 'object') merged.trims = {}
+        // model migration: devices still on an old DEFAULT follow the app
+        // default forward ('auto' → newest Opus); deliberate picks like
+        // haiku or fable are respected as-is
+        const model = merged.settings?.model
+        if (model === 'claude-opus-4-8') {
+          merged.settings = { ...merged.settings, model: 'auto' }
+        } else if (model === 'claude-sonnet-4-6') {
+          merged.settings = { ...merged.settings, model: 'claude-sonnet-5' }
+        }
         return merged
       },
     }
