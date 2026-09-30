@@ -29,7 +29,7 @@ Both are entered in Settings and stored **only in your browser's localStorage**.
 3. Add a few dollars of credit under **Billing** (a typical event costs roughly a dollar, model-dependent).
 4. Paste into Settings → *Anthropic API key* → **Test**.
 
-You can pick the brain model in Settings: **Auto** (default — always resolves to the newest Claude Opus via the Models API, currently Opus 5), or pin Opus 5, Sonnet 5 (cheaper), Haiku 4.5 (cheapest), or Fable 5 (maximum brain, premium price).
+You can pick the brain model in Settings: **Auto** (default — always resolves to the newest Claude Opus via the Models API, currently Opus 5.5), or pin Opus 5.5, Sonnet 5 (cheaper), Haiku 4.5 (cheapest), or Fable 5 (maximum brain, premium price). The **Check** button next to it sends a one-line soundcheck and shows which model answered with your key; the chat header always shows the model currently answering.
 
 ### 2. YouTube Data API key — track search
 

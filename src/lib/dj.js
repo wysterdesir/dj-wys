@@ -17,27 +17,47 @@ import {
   quotaUsedToday,
 } from './search'
 import { fmtTime } from './time'
+import { stripThinking, hasThinking, isTurnStart } from './history'
 
 // Newest flagship known at build time — the safety net when the live
 // model listing can't be reached (offline, key without models scope).
-export const FALLBACK_FLAGSHIP = 'claude-opus-5'
+export const FALLBACK_FLAGSHIP = 'claude-opus-5-5'
 
 export const MODELS = [
   { id: 'auto', label: 'Auto — always the newest Opus (recommended)' },
-  { id: 'claude-opus-5', label: 'Claude Opus 5 — current flagship DJ brain' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — current flagship DJ brain' },
   { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 — faster & cheaper' },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — cheapest' },
   { id: 'claude-fable-5', label: 'Claude Fable 5 — maximum brain, premium price' },
 ]
 
-// Pick the newest Opus-tier model from a Models API listing (created_at
-// wins). Opus is the flagship tier the app tracks; Fable/Mythos cost 2x
-// and stay a deliberate manual choice in the dropdown.
+// 'claude-opus-5-5' → 'Opus 5.5' (header chip, settings check)
+export function modelName(id) {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(id || '')
+  if (!m) return id || ''
+  return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
+}
+
+// Pick the newest Opus from a Models API listing by version number — a
+// patch to an older line published later must not win — with created_at
+// as the tiebreak. Bare version IDs only; suffixed variants are skipped.
+// Opus is the flagship tier the app tracks; Fable/Mythos cost 2x and stay
+// a deliberate manual choice in the dropdown.
 export function newestOpusFrom(models) {
   let best = null
+  let bestKey = null
   for (const m of models) {
-    if (!m?.id?.startsWith('claude-opus-')) continue
-    if (!best || new Date(m.created_at || 0) > new Date(best.created_at || 0)) best = m
+    const v = /^claude-opus-(\d+)(?:-(\d+))?$/.exec(m?.id || '')
+    if (!v) continue
+    const key = [Number(v[1]), Number(v[2] || 0), new Date(m.created_at || 0).getTime()]
+    const newer =
+      !bestKey ||
+      key[0] > bestKey[0] ||
+      (key[0] === bestKey[0] && (key[1] > bestKey[1] || (key[1] === bestKey[1] && key[2] > bestKey[2])))
+    if (newer) {
+      best = m
+      bestKey = key
+    }
   }
   return best ? best.id : FALLBACK_FLAGSHIP
 }
@@ -62,19 +82,55 @@ export function resolveModel(selected, client) {
   return autoPromise
 }
 
-// The Claude 5 family thinks by default, and thinking shares max_tokens
-// with the reply — give those models headroom. Effort is pinned LOW for
-// the booth models: a live party needs sub-seconds reactions, and low
-// effort on the 5 family still out-reasons the old flagships at full
-// tilt. Fable (a deliberate premium pick) runs medium for extra depth.
+function generation(model) {
+  const m = /^claude-(opus|sonnet|fable|mythos)-(\d+)/.exec(model || '')
+  return m ? { tier: m[1], major: Number(m[2]) } : null
+}
+
+// From the 5 generation on, models think on every turn (Opus 5.5 can't
+// turn it off) and thinking shares max_tokens with the reply — 16K gives
+// room while keeping a non-streaming call inside the SDK's timeout guard.
+// Effort is always explicit because defaults differ (Opus 5.5: medium):
+// LOW for the booth — a live party needs quick reactions, and low effort
+// on this generation still out-reasons the old flagships at full tilt.
+// Fable (a deliberate premium pick) runs medium for extra depth.
 function requestParams(model) {
-  if (/^claude-(fable|mythos)-5/.test(model)) {
-    return { max_tokens: 16000, output_config: { effort: 'medium' } }
+  const g = generation(model)
+  if (!g || g.major < 5) return { max_tokens: 4096 }
+  const premium = g.tier === 'fable' || g.tier === 'mythos'
+  return { max_tokens: 16000, output_config: { effort: premium ? 'medium' : 'low' } }
+}
+
+// Refusal safety net: should Opus's safety classifiers ever misfire on a
+// request (a stuck false positive would otherwise starve auto-refill for
+// the rest of the night), the API re-runs it on the model Anthropic
+// recommends for that category. Opus line only, where the 'default' form
+// is documented; switched off for the session if an endpoint rejects it.
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
+let fallbackOff = false
+const usesFallback = (model) => {
+  const g = generation(model)
+  return !fallbackOff && g?.tier === 'opus' && g.major >= 5
+}
+
+async function createMessage(client, body) {
+  if (!usesFallback(body.model)) return client.messages.create(body)
+  try {
+    return await client.beta.messages.create({ ...body, betas: [FALLBACK_BETA], fallbacks: 'default' })
+  } catch (e) {
+    if (!(e instanceof Anthropic.BadRequestError) || !/fallback/i.test(e.message)) throw e
+    fallbackOff = true
+    console.warn('[dj] refusal fallback unavailable — continuing without it:', e.message)
+    return client.messages.create(body)
   }
-  if (/^claude-(opus|sonnet)-5/.test(model)) {
-    return { max_tokens: 8192, output_config: { effort: 'low' } }
-  }
-  return { max_tokens: 4096 }
+}
+
+// A server-side fallback marks each model switch with a `fallback` block;
+// what the declined model produced before the last switch is dropped
+// except plain text (the API's echo rule), and the marker itself goes too.
+function echoable(content) {
+  const last = content.map((b) => b.type).lastIndexOf('fallback')
+  return content.filter((b, i) => b.type !== 'fallback' && (i > last || b.type === 'text'))
 }
 
 const S = () => useStore.getState()
@@ -82,9 +138,12 @@ const set = useStore.setState
 
 // ------------------------------------------------------------------ prompt
 
-// Stable system prompt — kept byte-identical across calls so prompt caching
-// can kick in; all volatile state goes in a second system block.
+// Frozen for the whole conversation: Opus 5.5 binds its thinking to the
+// exact system prompt, so the volatile booth state rides in each user turn
+// instead (see sendToDJ). Byte-identical also keeps it in the prompt cache.
 const SYSTEM = `You are DJ WYS, a world-class event DJ running a LIVE set. The host talks to you between songs; your text replies are patter on their headset — warm, confident, and brief (1–3 short sentences, no markdown lists or headers unless asked). You control the decks ONLY through your tools.
+
+Every incoming message opens with a <live_state> snapshot of the booth taken the moment it was sent. Trust the most recent snapshot; older ones are history.
 
 CRAFT
 - Open by learning the room: event type, audience, vibe, any must-plays or do-not-plays. If the host hasn't briefed you yet, ask one sharp question while still queueing something safe and broadly likable.
@@ -93,7 +152,7 @@ CRAFT
 - Variety: don't repeat an artist within ~5 tracks; never replay anything in recent_history unless asked. NEVER queue a song that already appears anywhere in live_state.upcoming — scan the full list before every queue_tracks call.
 - Honor requests instantly: "play X now" → play_now; "play X next" → queue_tracks with mode play_next.
 - Keep the upcoming queue AT LEAST 10 tracks deep (10–15 is ideal). Whenever live_state shows fewer than 10 upcoming, top it up with queue_tracks in the SAME response — the host should always see what the next 10 songs are.
-- A message starting with [AUTO] is from the app, not the host: the queue is running low. Extend the set seamlessly in the current vibe and reply with at most one short sentence, no greeting.
+- A message whose text (after its snapshot) starts with [AUTO] is from the app, not the host: the queue is running low. Extend the set seamlessly in the current vibe and reply with at most one short sentence, no greeting.
 - When the host lays out the evening (phases, key moments, end time), call set_event_plan with a concise plan — then pace the set against live_state.local_time: build toward the moments, land the final song on time.
 - The big screen is yours too: set_banner puts a scrolling message above the decks. Use it when asked ("put Happy Birthday up") and at natural moments — a dedication banner when the host dedicates a song, the event title at the start. Keep it short and celebratory; update or clear it when the moment passes.
 - When the host clearly says the night is over ("that's a wrap", "shut it down"), end_set fades the music out and archives the gig's setlist. If the signal is ambiguous, ask once before ending.
@@ -110,6 +169,8 @@ TOOLS
 - Tool results report what was ACTUALLY queued from YouTube. If the wrong upload came back (a live take, a cover), fix it by re-queueing with a more specific search_query.
 - set_crossfade: longer fades (8–12s) blend smoothly; shorter (2–4s) hit harder.
 - Only pause_music when the host clearly wants silence (speeches, toasts); resume_music brings the room back.`
+
+const SYSTEM_BLOCKS = [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }]
 
 const TRACK_PROPS = {
   artist: { type: 'string' },
@@ -302,16 +363,47 @@ function pushChat(role, text, extra = {}) {
   set((s) => ({ chat: [...s.chat, { id: uid(), role, text, ...extra }] }))
 }
 
-// Keep API history bounded AND well-formed: it must open with a plain user
-// text message — never an orphaned tool_result (which can be left behind if
-// a set reset wiped the history mid-tool-loop). Sanitizing on every read
-// also self-heals any bad history that got persisted by older versions.
-function trimmedHistory() {
-  let h = S().apiHistory
-  if (h.length > 36) h = h.slice(-36)
-  const startIdx = h.findIndex((m) => m.role === 'user' && typeof m.content === 'string')
-  if (startIdx === -1) return []
-  return startIdx === 0 ? h : h.slice(startIdx)
+// The API history is APPEND-ONLY while a conversation runs. Opus 5.5 binds
+// each thinking block to everything before it, so rewriting earlier turns
+// is a 400 for accounts created after 2026-08-31 (older accounts are let
+// through, but lose the prompt cache). To stay bounded it is cut only
+// between turns, and rarely; the kept turns lose their thinking blocks,
+// which were produced with the older history present and can't replay.
+const HISTORY_MAX = 64
+const HISTORY_KEEP = 32
+
+function compacted(h) {
+  if (h.length <= HISTORY_MAX) return h
+  let i = h.length - HISTORY_KEEP
+  while (i < h.length && !isTurnStart(h[i])) i++
+  return h.slice(i).map(stripThinking).filter(Boolean)
+}
+
+// The request's view of the history: well-formed (it must open with a turn,
+// never an orphaned tool_result left by a mid-loop reset — this also heals
+// bad history persisted by older versions), with a cache marker on the
+// newest block so the next request re-reads everything before it cheaply.
+function conversation() {
+  const h = S().apiHistory
+  const start = h.findIndex(isTurnStart)
+  if (start === -1) return []
+  const msgs = h.slice(start)
+  const last = msgs[msgs.length - 1]
+  if (Array.isArray(last.content) && last.content.length) {
+    const blocks = last.content.slice()
+    blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: 'ephemeral' } }
+    msgs[msgs.length - 1] = { ...last, content: blocks }
+  }
+  return msgs
+}
+
+// Documented recovery if a replayed thinking block is ever rejected as
+// belonging to a different conversation: drop all earlier reasoning once
+// (text and tool calls stay) rather than failing every request after it.
+function healThinking() {
+  if (!S().apiHistory.some(hasThinking)) return false
+  set((s) => ({ apiHistory: s.apiHistory.map(stripThinking).filter(Boolean) }))
+  return true
 }
 
 function pushApi(msg) {
@@ -520,7 +612,20 @@ export async function sendToDJ(text, { auto = false } = {}) {
   } else {
     pushChat('user', text)
   }
-  pushApi({ role: 'user', content: text })
+  // a new turn: the only moment the history may be cut; the booth snapshot
+  // is frozen into the turn itself so nothing earlier ever changes
+  set((st) => ({
+    apiHistory: [
+      ...compacted(st.apiHistory),
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: stateBlock() },
+          { type: 'text', text },
+        ],
+      },
+    ],
+  }))
 
   const client = new Anthropic({
     apiKey: s.settings.anthropicKey,
@@ -536,20 +641,26 @@ export async function sendToDJ(text, { auto = false } = {}) {
 
   try {
     const model = await resolveModel(s.settings.model, client)
+    const request = () => ({
+      model,
+      ...requestParams(model),
+      system: SYSTEM_BLOCKS,
+      messages: conversation(),
+      tools: TOOLS,
+    })
     for (let i = 0; i < 8; i++) {
       if (aborted()) break
-      const response = await client.messages.create({
-        model,
-        ...requestParams(model),
-        system: [
-          { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: stateBlock() },
-        ],
-        messages: trimmedHistory(),
-        tools: TOOLS,
-      })
+      let response
+      try {
+        response = await createMessage(client, request())
+      } catch (e) {
+        if (!(e instanceof Anthropic.BadRequestError) || !/thinking/i.test(e.message) || !healThinking()) throw e
+        console.warn('[dj] replayed reasoning rejected — dropped it and retried:', e.message)
+        response = await createMessage(client, request())
+      }
 
       if (aborted()) break // reset happened while waiting on the API
+      set({ brainModel: response.model })
 
       // Claude 5-family safety classifiers can decline a request (HTTP 200,
       // stop_reason 'refusal', content possibly empty) — never expected for
@@ -558,13 +669,20 @@ export async function sendToDJ(text, { auto = false } = {}) {
         if (!aborted()) pushChat('error', 'The DJ brain declined that one — try rephrasing the request.')
         break
       }
+      // a reply cut off mid-thought (possibly mid tool call) must never
+      // enter the history — an unanswered tool_use fails every later request
+      if (response.stop_reason === 'max_tokens') {
+        if (!aborted()) pushChat('error', 'The DJ brain ran out of room on that one — try again, or ask for less at once.')
+        break
+      }
 
-      pushApi({ role: 'assistant', content: response.content })
+      const content = echoable(response.content)
+      pushApi({ role: 'assistant', content })
 
       if (response.stop_reason === 'tool_use') {
         const results = []
         let setEnded = false
-        for (const block of response.content) {
+        for (const block of content) {
           if (block.type !== 'tool_use') continue
           let out
           try {
@@ -582,7 +700,7 @@ export async function sendToDJ(text, { auto = false } = {}) {
         continue
       }
 
-      const finalText = response.content
+      const finalText = content
         .filter((b) => b.type === 'text')
         .map((b) => b.text)
         .join('\n')
@@ -614,6 +732,38 @@ export function autoRefill() {
     `[AUTO] The upcoming queue is down to ${n} track${n === 1 ? '' : 's'}. Top it up with ${need} more in the current vibe so at least 10 stay queued.`,
     { auto: true }
   )
+}
+
+const brainClient = () =>
+  new Anthropic({ apiKey: S().settings.anthropicKey, dangerouslyAllowBrowser: true, maxRetries: 1 })
+
+// Header chip: which model the current setting resolves to, before any
+// request has run (after that, each response records who really answered).
+export async function showBrainModel() {
+  const s = S()
+  if (!s.settings.anthropicKey) return set({ brainModel: null })
+  set({ brainModel: await resolveModel(s.settings.model, brainClient()) })
+}
+
+// Settings "Check": one tiny real request down the exact production path,
+// so the host can see which model answers with their key before a gig.
+export async function checkBrain() {
+  const client = brainClient()
+  const model = await resolveModel(S().settings.model, client)
+  const response = await createMessage(client, {
+    model,
+    ...requestParams(model),
+    system: SYSTEM_BLOCKS,
+    messages: [
+      {
+        role: 'user',
+        content: 'Soundcheck from the app, not the host: reply with one short line and use no tools.',
+      },
+    ],
+    tools: TOOLS,
+  })
+  set({ brainModel: response.model })
+  return response.model
 }
 
 // Cheap key check: 1-token call against the cheapest model.

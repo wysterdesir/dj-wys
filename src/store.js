@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { stripThinking } from './lib/history'
 
 let n = 0
 export const uid = () => `t${Date.now().toString(36)}-${(n++).toString(36)}`
@@ -69,9 +70,10 @@ export const useStore = create(
 
       // ---------- chat ----------
       chat: [], // { id, role: 'user'|'dj'|'event'|'error', text, chips: [] }
-      apiHistory: [], // raw Anthropic message objects (incl. tool blocks)
+      apiHistory: [], // raw Anthropic message objects (incl. tool blocks) — append-only, see dj.js
       chatEpoch: 0, // bumped whenever the conversation is reset — aborts in-flight loops
       aiBusy: false,
+      brainModel: null, // model id that last answered (or will answer) — runtime only
 
       // ---------- ui ----------
       settingsOpen: false,
@@ -89,7 +91,7 @@ export const useStore = create(
         trims: s.trims,
         energy: s.energy,
         chat: s.chat.slice(-80),
-        apiHistory: s.apiHistory.slice(-40),
+        apiHistory: s.apiHistory, // bounded by dj.js; slicing here would rewrite it
         autoDJ: s.autoDJ,
         eventPlan: s.eventPlan,
         banner: s.banner,
@@ -104,15 +106,20 @@ export const useStore = create(
         merged.queue = dedupeTracks(merged.queue)
         merged.history = dedupeTracks(merged.history)
         if (!merged.trims || typeof merged.trims !== 'object') merged.trims = {}
-        // model migration: devices still on an old DEFAULT follow the app
-        // default forward ('auto' → newest Opus); deliberate picks like
-        // haiku or fable are respected as-is
+        // model migration: devices on an old default, or pinned to the
+        // option once labeled "current flagship", follow forward to 'auto'
+        // (newest Opus); deliberate picks like haiku or fable stay as-is
         const model = merged.settings?.model
-        if (model === 'claude-opus-4-8') {
+        if (model === 'claude-opus-4-8' || model === 'claude-opus-5') {
           merged.settings = { ...merged.settings, model: 'auto' }
         } else if (model === 'claude-sonnet-4-6') {
           merged.settings = { ...merged.settings, model: 'claude-sonnet-5' }
         }
+        // reasoning from a previous page session may not match this build's
+        // system prompt; dropping all of it (a leading run) is always valid
+        merged.apiHistory = Array.isArray(merged.apiHistory)
+          ? merged.apiHistory.map(stripThinking).filter(Boolean)
+          : []
         return merged
       },
     }

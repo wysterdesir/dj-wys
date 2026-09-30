@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { sendToDJ, MODELS } from '../lib/dj'
+import { sendToDJ, modelName, showBrainModel } from '../lib/dj'
 
 // ---- set builder: tap a few chips, get a composed DJ brief -------------
 const EVENTS = [
@@ -199,12 +199,18 @@ export default function ChatSidebar() {
   const aiBusy = useStore((s) => s.aiBusy)
   const hasKey = useStore((s) => !!s.settings.anthropicKey)
   const model = useStore((s) => s.settings.model)
+  const brain = useStore((s) => s.brainModel)
   const [input, setInput] = useState('')
   const endRef = useRef(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [chat.length, aiBusy])
+
+  // show which model the setting resolves to before the first request
+  useEffect(() => {
+    showBrainModel()
+  }, [hasKey, model])
 
   const send = () => {
     const text = input.trim()
@@ -213,7 +219,9 @@ export default function ChatSidebar() {
     sendToDJ(text)
   }
 
-  const modelShort = MODELS.find((m) => m.id === model)?.label.split(' — ')[0] || model
+  // the model that actually answered (a refusal fallback can differ)
+  const shown = modelName(brain || (model === 'auto' ? '' : model))
+  const modelShort = model === 'auto' ? `Auto${shown ? ` · ${shown}` : ''}` : shown
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-black/20">

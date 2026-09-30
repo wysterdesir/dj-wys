@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, toast } from '../store'
-import { MODELS, validateAnthropicKey } from '../lib/dj'
+import { MODELS, validateAnthropicKey, checkBrain, modelName } from '../lib/dj'
 import { validateYouTubeKey, quotaUsedToday, librarySize } from '../lib/search'
 import { loadDemoSet } from '../lib/demo'
 import {
@@ -89,7 +89,18 @@ export default function SettingsModal() {
   const playedCount = useStore(
     (s) => s.history.length + (s.decks[s.active].track ? 1 : 0)
   )
+  const [brainCheck, setBrainCheck] = useState(null) // null | 'checking' | { ok, text }
   const close = () => useStore.setState({ settingsOpen: false })
+
+  const runBrainCheck = async () => {
+    setBrainCheck('checking')
+    try {
+      const answered = await checkBrain()
+      setBrainCheck({ ok: true, text: `✓ ${modelName(answered)} answered the soundcheck` })
+    } catch (e) {
+      setBrainCheck({ ok: false, text: `✗ ${e.status === 401 ? 'key rejected' : e.message}` })
+    }
+  }
 
   if (!open) return null
 
@@ -259,17 +270,35 @@ export default function SettingsModal() {
         <section className="flex flex-col gap-4">
           <h3 className="text-[10px] font-semibold tracking-[0.25em] text-zinc-500">DJ BEHAVIOR</h3>
           <Row label="DJ brain model" hint="cost ↕ quality">
-            <select
-              value={settings.model}
-              onChange={(e) => setSetting('model', e.target.value)}
-              className="bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-violet-400/50 [&>option]:bg-zinc-900"
-            >
-              {MODELS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={settings.model}
+                onChange={(e) => {
+                  setSetting('model', e.target.value)
+                  setBrainCheck(null)
+                }}
+                className="flex-1 min-w-0 bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-violet-400/50 [&>option]:bg-zinc-900"
+              >
+                {MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={runBrainCheck}
+                disabled={!settings.anthropicKey || brainCheck === 'checking'}
+                title="Sends the DJ brain a one-line soundcheck and shows which Claude model answered"
+                className="shrink-0 text-xs px-3 rounded-lg border border-white/15 text-zinc-400 hover:text-zinc-200 transition disabled:opacity-40"
+              >
+                {brainCheck === 'checking' ? '…' : 'Check'}
+              </button>
+            </div>
+            {brainCheck && brainCheck !== 'checking' && (
+              <span className={`text-[10px] ${brainCheck.ok ? 'text-emerald-300/90' : 'text-red-300/90'}`}>
+                {brainCheck.text}
+              </span>
+            )}
           </Row>
           <Row label={`FX pad volume — ${Math.round((settings.fxLevel ?? 0.5) * 100)}%`}>
             <input
