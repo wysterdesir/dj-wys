@@ -71,7 +71,7 @@ export function quotaUsedToday() {
 const LIB_KEY = 'djwys-library-v1'
 let lib = null
 
-const norm = (x) =>
+export const norm = (x) =>
   String(x || '')
     .toLowerCase()
     .normalize('NFD')
@@ -125,6 +125,18 @@ export function libraryAdd(artist, title, result) {
 
 export function librarySize() {
   return Object.keys(loadLib()).length
+}
+
+// Library songs that haven't aired this set, most recently used first —
+// free, fresh picks for when the daily search budget runs low.
+export function libraryFresh(played, limit = 40) {
+  const airedIds = new Set(played.map((t) => t.videoId).filter(Boolean))
+  const airedKeys = new Set(played.map((t) => libKey(t.artist, t.title)))
+  return Object.entries(loadLib())
+    .filter(([k, v]) => !airedIds.has(v.videoId) && !airedKeys.has(k))
+    .sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))
+    .slice(0, limit)
+    .map(([k]) => k.replace('|', ' — '))
 }
 
 // One-time per load: anything already in the queue/history/archives with a

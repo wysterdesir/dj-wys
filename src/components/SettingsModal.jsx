@@ -14,9 +14,7 @@ import {
 import { fmtRuntime } from '../lib/time'
 
 function exportSetList() {
-  const s = useStore.getState()
-  const act = s.decks[s.active].track
-  const all = [...s.history, ...(act ? [act] : [])]
+  const all = snapshotTracks()
   if (all.length === 0) {
     toast('Nothing played yet — the set list is empty')
     return
@@ -86,9 +84,7 @@ export default function SettingsModal() {
   const banner = useStore((s) => s.banner)
   const currentSet = useStore((s) => s.currentSet)
   const pastSets = useStore((s) => s.pastSets)
-  const playedCount = useStore(
-    (s) => s.history.length + (s.decks[s.active].track ? 1 : 0)
-  )
+  const playedCount = useStore((s) => s.playLog.length)
   const [brainCheck, setBrainCheck] = useState(null) // null | 'checking' | { ok, text }
   const close = () => useStore.setState({ settingsOpen: false })
 

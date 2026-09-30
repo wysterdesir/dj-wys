@@ -253,6 +253,21 @@ function loadOnDeck(deck, track, { andPlay = true } = {}) {
           videoId: track.videoId,
         }
       : s.lastNowPlaying,
+    // the whole night, uncapped by the deck history: the set archive and
+    // the DJ's once-per-set rule both read it
+    playLog: andPlay
+      ? [
+          ...s.playLog,
+          {
+            artist: track.artist,
+            title: track.title,
+            videoId: track.videoId,
+            durationSec: track.durationSec,
+            energy: track.energy,
+            at: Date.now(),
+          },
+        ].slice(-400)
+      : s.playLog,
   }))
   const startSeconds = startAtOf(track)
   safe(players[deck], 'setPlaybackRate', 1) // undo any BRAKE leftovers
@@ -513,9 +528,17 @@ export function skip() {
     toast('Nothing queued to skip to')
     return
   }
-  if (!s.decks[s.active].track) {
+  const act = s.decks[s.active]
+  if (!act.track) {
     startSet()
     return
+  }
+  if (s.transition) return
+  // bailing on a song in its first minute (or first third) tells the DJ
+  // that lane isn't landing; two in a row make it rework the next songs
+  if (act.progress < 60 || (act.duration > 0 && act.progress < act.duration * 0.35)) {
+    noteSignal('skipped', act.track, { after: Math.round(act.progress) })
+    import('./dj').then((dj) => dj.maybeCourseCorrect())
   }
   beginTransition({ fade: Math.min(2, s.settings.fadeSeconds) })
 }
@@ -619,6 +642,16 @@ export function setQueue(updater) {
   })
 }
 
+// Revive playback if the set was running but the queue had run dry.
+function reviveIfDry() {
+  const s = S()
+  const act = s.decks[s.active]
+  if (s.started && !s.transition && s.queue.length) {
+    if (!act.track) startSet()
+    else if (act.state === 'ended') beginTransition({ fade: 1.2 })
+  }
+}
+
 export function queueTracks(tracks, mode = 'append') {
   // fresh id even when re-queueing a history item, so list keys never collide
   const items = tracks.map((t) => ({ ...t, id: uid() }))
@@ -627,21 +660,44 @@ export function queueTracks(tracks, mode = 'append') {
     if (mode === 'play_next') return [...items, ...q]
     return [...q, ...items]
   })
-  // revive playback if the set was running but the queue had run dry
-  const s = S()
-  const act = s.decks[s.active]
-  if (s.started && !s.transition && s.queue.length) {
-    if (!act.track) startSet()
-    else if (act.state === 'ended') beginTransition({ fade: 1.2 })
-  }
+  reviveIfDry()
   return items
 }
 
+// Slot tracks right after the current song, in order. A track that is
+// already in the queue (its entry id is still live) moves up instead of
+// doubling; anything else goes in as a fresh entry.
+export function placeNext(tracks, { revive = true } = {}) {
+  let placed = []
+  setQueue((q) => {
+    const live = new Set(q.map((t) => t.id))
+    placed = tracks.map((t) => (t.id && live.has(t.id) ? t : { ...t, id: uid() }))
+    const moved = new Set(placed.map((t) => t.id))
+    return [...placed, ...q.filter((t) => !moved.has(t.id))]
+  })
+  if (revive) reviveIfDry()
+  return placed
+}
+
+// Host moves a working DJ reads the room from: a song skipped early, a
+// queued pick thrown out, a queued pick pulled forward.
+export function noteSignal(type, track, extra = {}) {
+  if (!track) return
+  set((s) => ({
+    signals: [
+      ...s.signals,
+      { type, artist: track.artist, title: track.title, videoId: track.videoId, at: Date.now(), ...extra },
+    ].slice(-30),
+  }))
+}
+
 export function removeFromQueue(id) {
+  noteSignal('removed', S().queue.find((t) => t.id === id))
   setQueue((q) => q.filter((t) => t.id !== id))
 }
 
 export function moveToFront(id) {
+  noteSignal('pulled', S().queue.find((t) => t.id === id))
   setQueue((q) => {
     const t = q.find((x) => x.id === id)
     if (!t) return q
@@ -680,16 +736,17 @@ export function playNowFromQueue(id, deckPref) {
   }
   const t = s.queue.find((x) => x.id === id)
   if (!t) return
-  setQueue((q) => q.filter((x) => x.id !== id))
-  const st = S()
-  if (!st.decks[st.active].track && deckPref && !st.decks[deckPref].track) {
+  noteSignal('pulled', t)
+  if (!s.decks[s.active].track && deckPref && !s.decks[deckPref].track) {
     set({ active: deckPref, xfade: deckPref === 'B' ? 1 : 0, started: true })
   }
   playNow(t)
 }
 
+// Crossfade into a track right now; one already in the queue is pulled
+// out of its slot rather than duplicated.
 export function playNow(track) {
-  queueTracks([track], 'play_next')
+  placeNext([track], { revive: false })
   const s = S()
   if (s.decks[s.active].track) beginTransition({ fade: Math.min(2.5, s.settings.fadeSeconds) })
   else startSet()

@@ -64,6 +64,8 @@ export const useStore = create(
 
       // ---------- set / gig lifecycle ----------
       currentSet: null, // { id, name, startedAt }
+      playLog: [], // every song that aired this set, in order: { artist, title, videoId, durationSec, energy, at }
+      signals: [], // host moves the DJ reads the room from: { type: skipped|removed|pulled, artist, title, videoId, at }
       pastSets: [], // archived gigs: { id, name, startedAt, endedAt, eventPlan, tracks }
       lastActiveAt: 0, // last time music was actually playing
       lastNowPlaying: null, // in-flight track snapshot — survives reload for archiving
@@ -96,6 +98,8 @@ export const useStore = create(
         eventPlan: s.eventPlan,
         banner: s.banner,
         currentSet: s.currentSet,
+        playLog: s.playLog,
+        signals: s.signals,
         pastSets: s.pastSets.slice(0, 50),
         lastActiveAt: s.lastActiveAt,
         lastNowPlaying: s.lastNowPlaying,
@@ -114,6 +118,22 @@ export const useStore = create(
           merged.settings = { ...merged.settings, model: 'auto' }
         } else if (model === 'claude-sonnet-4-6') {
           merged.settings = { ...merged.settings, model: 'claude-sonnet-5' }
+        }
+        if (!Array.isArray(merged.signals)) merged.signals = []
+        // sets begun before the play log existed: rebuild it from the deck
+        // history plus whatever was airing when the page closed
+        if (!Array.isArray(merged.playLog) || merged.playLog.length === 0) {
+          const airing = merged.lastNowPlaying
+          const lastHist = merged.history[merged.history.length - 1]
+          const tail = airing && airing.videoId !== lastHist?.videoId ? [airing] : []
+          merged.playLog = [...merged.history, ...tail].map((t) => ({
+            artist: t.artist,
+            title: t.title,
+            videoId: t.videoId,
+            durationSec: t.durationSec,
+            energy: t.energy,
+            at: 0,
+          }))
         }
         // reasoning from a previous page session may not match this build's
         // system prompt; dropping all of it (a leading run) is always valid

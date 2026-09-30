@@ -15,9 +15,11 @@ import {
   lookupVideos,
   plausibleMatch,
   quotaUsedToday,
+  libraryFresh,
 } from './search'
-import { fmtTime } from './time'
+import { fmtTime, fmtRuntime } from './time'
 import { stripThinking, hasThinking, isTurnStart } from './history'
+import { sameSong, sameArtist } from './freshness'
 
 // Newest flagship known at build time — the safety net when the live
 // model listing can't be reached (offline, key without models scope).
@@ -141,32 +143,47 @@ const set = useStore.setState
 // Frozen for the whole conversation: Opus 5.5 binds its thinking to the
 // exact system prompt, so the volatile booth state rides in each user turn
 // instead (see sendToDJ). Byte-identical also keeps it in the prompt cache.
-const SYSTEM = `You are DJ WYS, a world-class event DJ running a LIVE set. The host talks to you between songs; your text replies are patter on their headset — warm, confident, and brief (1–3 short sentences, no markdown lists or headers unless asked). You control the decks ONLY through your tools.
+const SYSTEM = `You are DJ WYS, a world-class event DJ running a LIVE set — you work a room the way the best club and wedding DJs do. The host talks to you between songs; your text replies are patter on their headset — warm, confident, and brief (1–3 short sentences, no markdown lists or headers unless asked). You control the decks ONLY through your tools.
 
 Every incoming message opens with a <live_state> snapshot of the booth taken the moment it was sent. Trust the most recent snapshot; older ones are history.
 
-CRAFT
+READING THE ROOM
 - Open by learning the room: event type, audience, vibe, any must-plays or do-not-plays. If the host hasn't briefed you yet, ask one sharp question while still queueing something safe and broadly likable.
-- Build arcs: warm-up → groove → peak → cooldown. Sequence adjacent tracks by energy, genre and era so every transition feels intentional.
+- host_signals are the floor talking: a song skipped early or a pick thrown out of the queue means that lane isn't landing — steer away from it; a pick pulled forward means give them more like it. Crowd reads from the host ("packed", "emptying") outrank everything else.
+- React within a song or two. When the host or the signals call for a change, rework the next few slots (play_next or replace_upcoming) — appending to the end would take forty minutes to arrive.
+
+KEEPING IT FRESH
+- Every song plays ONCE per set. played_this_set lists everything that has aired tonight; never queue a song from it, from the decks, or already upcoming — unless the host explicitly asks for that exact song again, in which case set requested_by_host. The booth refuses repeats and reports them, so check the list before you pick.
+- Space artists: 8+ songs between tracks by the same artist, unless the host asks for a run of them or the theme is one artist.
+- Pivot the flavor every 20–30 minutes — a new sub-style, era, language or tempo pocket — while holding the energy. That is what keeps a room interested for hours.
+- Inside a narrow theme, dig wider instead of circling its most famous songs: its different decades, sub-genres and scenes, the neighboring genres that share its groove, well-known remixes and edits, and deeper cuts from the artists everyone knows.
+- Balance the familiar and the fresh: about 6 in 10 songs the crowd will recognize instantly, 3 deeper or newer cuts that fit, 1 surprise that still makes sense.
+
+KEEPING IT HOT
+- Ride waves, not a flat line: build → peak → release → rebuild. When peak_run_min passes about 30–40, give the floor one or two breather songs — a big singalong or a deep groove at energy 3–4 — then climb again. During dance time never let three low songs run back to back. energy_trail shows the energy of the last dozen songs (the last one is on air).
+- Pace your ammunition: hold several of the night's biggest anthems in reserve for the peak and for rescues; don't burn them all in the first hour.
+- Flow: keep neighbors within about 8 BPM, or change tempo on purpose through a bridge song with a foot in both worlds. Sequence by energy, genre and era so every transition feels intentional.
 - The energy scale: 1 = dinner/ambient … 5 = peak dancefloor. Move gradually unless the host demands a jump. Call set_energy when the direction changes.
-- Variety: don't repeat an artist within ~5 tracks; never replay anything in recent_history unless asked. NEVER queue a song that already appears anywhere in live_state.upcoming — scan the full list before every queue_tracks call.
-- Honor requests instantly: "play X now" → play_now; "play X next" → queue_tracks with mode play_next.
-- Keep the upcoming queue AT LEAST 10 tracks deep (10–15 is ideal). Whenever live_state shows fewer than 10 upcoming, top it up with queue_tracks in the SAME response — the host should always see what the next 10 songs are.
-- A message whose text (after its snapshot) starts with [AUTO] is from the app, not the host: the queue is running low. Extend the set seamlessly in the current vibe and reply with at most one short sentence, no greeting.
-- When the host lays out the evening (phases, key moments, end time), call set_event_plan with a concise plan — then pace the set against live_state.local_time: build toward the moments, land the final song on time.
+
+RUNNING THE BOOTH
+- Honor requests fast: "play X now" → play_now; "play X next" → queue_tracks with mode play_next (a song that is already queued moves up instead of doubling). If a request fits badly this minute, land it within the next few songs at a moment it can work.
+- Keep the upcoming queue AT LEAST 10 songs deep (10–15 is ideal), planned as a sequence rather than a pile. Whenever live_state shows fewer than 10 upcoming, top it up in the SAME response.
+- A message whose text (after its snapshot) starts with [AUTO] is from the app, not the host: the queue is running low, or the app noticed something about the floor. Act on it, carrying the set's arc forward, and reply with at most one short sentence, no greeting.
+- When the host lays out the evening (phases, key moments, end time), call set_event_plan with a concise plan — then pace the set against local_time: build toward the moments, land the final song on time.
 - The big screen is yours too: set_banner puts a scrolling message above the decks. Use it when asked ("put Happy Birthday up") and at natural moments — a dedication banner when the host dedicates a song, the event title at the start. Keep it short and celebratory; update or clear it when the moment passes.
 - When the host clearly says the night is over ("that's a wrap", "shut it down"), end_set fades the music out and archives the gig's setlist. If the signal is ambiguous, ask once before ending.
 
 TRACK PICKING
-- Search budget: each fresh lookup costs 1 of ~99 daily searches (live_state shows usage). Two ways to queue tracks for FREE: tracks resolved before this device come from the library automatically, and supplying a confident video_id verifies at ~1% of a search's cost. For well-known tracks whose official upload ID you know, ALWAYS include video_id. When usage runs high (80+), stick to library repeats and confident video_ids, and tell the host if you're getting constrained.
+- Search budget: each fresh lookup costs 1 of ~99 daily searches (live_state shows usage). Two ways to queue songs for FREE: songs already in this device's library resolve automatically, and a confident video_id verifies at ~1% of a search's cost. For well-known tracks whose official upload ID you know, ALWAYS include video_id. When usage runs high, lean on library_fresh (library songs that haven't aired tonight) and confident video_ids — never on songs already played — and tell the host if you're getting constrained.
 - search_query format: "{artist} {title} official audio". For big visual moments use "official video" instead — the video shows on the decks.
 - Prefer original studio recordings unless the host asks for live/remix versions.
 - Mind explicit lyrics around family crowds — when kids are present search "{artist} {title} clean version".
-- If a tool result says a track wasn't found or was blocked, pick a replacement immediately — never leave a hole in the set.
+- If a tool result says a song wasn't found, was blocked or was refused, replace it in your next call — never leave a hole in the set.
 - Mix points: for tracks you know well, set start_at to skip a video's cinematic intro and fade_out_at to start the blend before the outro/credits. This is what makes transitions feel hand-mixed. Omit both when unsure — the engine falls back to full length.
+- Give every pick a note of a few words naming its job in the set (anthem, breather, bridge to the 90s, deep cut) — the host sees it on the queue.
 
 TOOLS
-- Tool results report what was ACTUALLY queued from YouTube. If the wrong upload came back (a live take, a cover), fix it by re-queueing with a more specific search_query.
+- Tool results report what was ACTUALLY queued from YouTube, and anything the booth refused (repeats, doubles) or flagged (the same artist placed too close). If the wrong upload came back (a live take, a cover), send that song again with fix_upload and a more specific search_query or a video_id — the booth swaps the upload where it sits in the queue.
 - set_crossfade: longer fades (8–12s) blend smoothly; shorter (2–4s) hit harder.
 - Only pause_music when the host clearly wants silence (speeches, toasts); resume_music brings the room back.`
 
@@ -180,7 +197,20 @@ const TRACK_PROPS = {
     description: 'YouTube search query, usually "{artist} {title} official audio"',
   },
   energy: { type: 'integer', description: 'Track energy: 1 chill … 5 peak dancefloor' },
-  note: { type: 'string', description: 'Optional: why this track — shown to the host' },
+  note: {
+    type: 'string',
+    description: "A few words on this pick's job in the set (anthem, breather, bridge to the 90s, deep cut) — shown to the host",
+  },
+  requested_by_host: {
+    type: 'boolean',
+    description:
+      'true ONLY when the host explicitly asked for this exact song, including asking to hear it again. Without it the booth refuses songs that already aired tonight.',
+  },
+  fix_upload: {
+    type: 'boolean',
+    description:
+      'true to replace the YouTube upload of this song where it already sits in the queue (a live take or cover came back) — pair it with a more specific search_query or a video_id.',
+  },
   video_id: {
     type: 'string',
     description:
@@ -202,7 +232,7 @@ const TOOLS = [
   {
     name: 'queue_tracks',
     description:
-      "Add tracks to the upcoming queue. mode 'append' adds to the end, 'play_next' slots them right after the current song, 'replace_upcoming' rebuilds the upcoming queue from scratch (the current song keeps playing). The result reports exactly what was found and queued.",
+      "Add tracks to the upcoming queue. mode 'append' adds to the end, 'play_next' slots them right after the current song (a song already queued moves up instead of doubling), 'replace_upcoming' rebuilds the upcoming queue from scratch (the current song keeps playing). The result reports exactly what was found and queued, and anything the booth refused.",
     input_schema: {
       type: 'object',
       properties: {
@@ -321,14 +351,37 @@ const TOOLS = [
   },
 ]
 
+const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+function minsAgo(ts) {
+  if (!ts) return 'earlier tonight'
+  const m = Math.round((Date.now() - ts) / 60000)
+  return m < 1 ? 'just now' : `${m} min ago`
+}
+
+function describeSignal(x) {
+  const song = `${x.artist} — ${x.title} (${minsAgo(x.at)})`
+  if (x.type === 'skipped') return `skipped after ${fmtTime(x.after || 0)}: ${song}`
+  if (x.type === 'removed') return `thrown out of the queue: ${song}`
+  return `pulled forward: ${song}`
+}
+
 function stateBlock() {
   const s = S()
   const deck = s.decks[s.active]
+  const log = s.playLog
+  // minutes the floor has run at energy 4+ without a dip, counting back from now
+  let peakRun = 0
+  for (let i = log.length - 1; i >= 0 && (log[i].energy ?? 3) >= 4; i--) {
+    peakRun += (log[i].durationSec || 210) / 60
+  }
+  const quota = quotaUsedToday()
   const state = {
     now_playing: deck.track
       ? {
           artist: deck.track.artist,
           title: deck.track.title,
+          energy: deck.track.energy,
           position: `${fmtTime(deck.progress)} / ${fmtTime(deck.duration)}`,
           state: deck.state,
         }
@@ -338,21 +391,33 @@ function stateBlock() {
       title: t.title,
       energy: t.energy,
       duration: fmtTime(t.durationSec),
+      ...(t.note && t.note !== 'demo' ? { note: t.note.slice(0, 40) } : {}),
     })),
     upcoming_count: s.queue.length,
-    recent_history: s.history.slice(-10).map((t) => `${t.artist} — ${t.title}`),
+    set: s.currentSet
+      ? {
+          name: s.currentSet.name,
+          started: clock(s.currentSet.startedAt),
+          running: fmtRuntime((Date.now() - s.currentSet.startedAt) / 1000),
+          songs_played: log.length,
+        }
+      : null,
+    played_this_set: log.slice(-200).map((t) => `${t.artist} — ${t.title}`),
+    energy_trail: log.slice(-12).map((t) => t.energy ?? 3),
+    peak_run_min: Math.round(peakRun),
+    host_signals: s.signals
+      .filter((x) => Date.now() - x.at < 45 * 60000)
+      .slice(-8)
+      .map(describeSignal),
     energy_level: s.energy,
     crossfade_seconds: s.settings.fadeSeconds,
     auto_dj: s.autoDJ,
     talkover_ducked: s.ducked,
     event_plan: s.eventPlan || null,
     banner: s.banner || null,
-    set_name: s.currentSet?.name || null,
-    set_started: s.currentSet
-      ? new Date(s.currentSet.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : null,
-    search_quota_used_today: `${quotaUsedToday()} of ~99 (resets midnight PT)`,
-    local_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    search_quota_used_today: `${quota} of ~99 (resets midnight PT)`,
+    ...(quota >= 70 ? { library_fresh: libraryFresh(log, 40) } : {}),
+    local_time: clock(Date.now()),
   }
   return `<live_state>\n${JSON.stringify(state, null, 1)}\n</live_state>`
 }
@@ -427,13 +492,15 @@ function buildTrack(t, found, how) {
     fadeOutAt: t.fade_out_at,
     query: t.search_query,
     candidates: found.candidates || [found.videoId],
+    ...(t.requested_by_host === true ? { requested: true } : {}),
   }
 }
 
 // Resolution ladder: library (free) → DJ-supplied id, pre-verified in a
 // batched 1-unit lookup (idMap) → full search (~1 search of the daily ~99).
-async function resolveTrack(t, idMap) {
-  const hit = libraryLookup(t.artist, t.title)
+// Fixing a wrong upload skips the library, which would return it again.
+async function resolveTrack(t, idMap, { skipLibrary = false } = {}) {
+  const hit = skipLibrary ? null : libraryLookup(t.artist, t.title)
   if (hit) return buildTrack(t, hit, 'library')
 
   if (t.video_id && idMap) {
@@ -451,63 +518,192 @@ async function resolveTrack(t, idMap) {
   return buildTrack(t, found, 'search')
 }
 
-// One cheap batched lookup for every DJ-supplied id that the library
-// doesn't already cover (whole batch ≈ 1 quota unit).
-async function verifyIdsFor(tracks) {
-  const need = tracks
-    .filter((t) => t.video_id && !libraryLookup(t.artist, t.title))
-    .map((t) => t.video_id)
-  if (need.length === 0) return new Map()
+// One cheap batched lookup for the DJ-supplied ids that need checking
+// (whole batch ≈ 1 quota unit).
+async function verifyIds(tracks) {
+  const ids = tracks.map((t) => t.video_id).filter(Boolean)
+  if (ids.length === 0) return new Map()
   try {
-    return await lookupVideos(need, S().settings.youtubeKey)
+    return await lookupVideos(ids, S().settings.youtubeKey)
   } catch {
     return new Map()
   }
 }
 
+// Which picks need their video_id verified: library songs resolve free,
+// except when the DJ is replacing a wrong upload.
+const needsIdCheck = (t, v) => t.video_id && !v.move && (v.swap || !libraryLookup(t.artist, t.title))
+
+// The booth's rules for the DJ's own picks (host requests pass): a song
+// airs once per set and never doubles up with the decks or the queue.
+// A queued song asked for again moves up under play_next, or gets a new
+// upload swapped in with fix_upload. Runs before any search is spent.
+function vet(t, { mode, aired, onDecks, queued, taken }) {
+  const pick = t.video_id ? { ...t, videoId: t.video_id } : t
+  if (taken.some((x) => sameSong(x, pick))) return { skip: 'listed twice in this call' }
+  const byHost = t.requested_by_host === true
+  if (!byHost && onDecks.some((d) => sameSong(d, pick))) return { skip: 'it is on the decks right now' }
+  const i = queued.findIndex((e) => sameSong(e, pick))
+  if (i !== -1) {
+    if (t.fix_upload === true) return { swap: queued[i] }
+    if (mode === 'play_next') return { move: queued[i] }
+    return { skip: `already queued at #${i + 1}` }
+  }
+  if (!byHost) {
+    for (let j = aired.length - 1; j >= 0; j--) {
+      if (sameSong(aired[j], pick)) return { skip: `already played tonight, ${minsAgo(aired[j].at)}` }
+    }
+  }
+  return {}
+}
+
+// Two differently named picks can land on the same upload, so the rule is
+// checked again once the upload is known.
+function uploadClash(r, t, { aired, onDecks, queued }, placed, swapOf) {
+  if (t.requested_by_host !== true && [...aired, ...onDecks].some((x) => x.videoId === r.videoId)) {
+    return 'that upload already played tonight'
+  }
+  const q = queued.findIndex((e) => e.videoId === r.videoId && e.id !== swapOf?.id)
+  if (q !== -1) return `that upload is already queued at #${q + 1}`
+  if (placed.some((x) => x.videoId === r.videoId)) return 'that upload is already in this call'
+  if (swapOf && swapOf.videoId === r.videoId) return 'the same upload came back — try a video_id or a more specific search_query'
+  return null
+}
+
+// Pro spacing: flag any newly placed song that sits within 8 songs of
+// another track by the same artist (recent plays included).
+function spacingNotes(ids) {
+  const s = S()
+  const aired = s.playLog.slice(-10)
+  const timeline = [...aired, ...s.queue]
+  const out = []
+  s.queue.forEach((t, i) => {
+    if (!ids.has(t.id) || t.requested) return
+    const p = aired.length + i
+    let near = Infinity
+    timeline.forEach((x, j) => {
+      if (j !== p && sameArtist(x.artist, t.artist)) near = Math.min(near, Math.abs(j - p))
+    })
+    if (near < 8) {
+      out.push(`SPACING: ${t.artist} — ${t.title} sits ${near} song${near === 1 ? '' : 's'} from another ${t.artist} track; keep the same artist 8+ apart.`)
+    }
+  })
+  return out
+}
+
 async function execQueueTracks({ mode = 'append', tracks = [] }) {
+  const s = S()
+  const ctx = {
+    mode,
+    aired: s.playLog,
+    onDecks: [s.decks.A.track, s.decks.B.track].filter(Boolean),
+    queued: mode === 'replace_upcoming' ? [] : s.queue,
+    taken: [],
+  }
   const lines = []
-  const found = []
-  const list = tracks.slice(0, 12)
-  const idMap = await verifyIdsFor(list)
+  const plan = []
+  let refused = 0
+  for (const t of tracks.slice(0, 12)) {
+    const v = vet(t, ctx)
+    if (v.skip) {
+      refused++
+      lines.push(`NOT ADDED: ${t.artist} — ${t.title} (${v.skip})`)
+      continue
+    }
+    ctx.taken.push(t.video_id ? { ...t, videoId: t.video_id } : t)
+    plan.push({ t, ...v })
+  }
+
+  const idMap = await verifyIds(plan.filter((p) => needsIdCheck(p.t, p)).map((p) => p.t))
   const tag = { library: 'from library, free', id: 'via your video_id, ~free', search: 'searched' }
-  for (const t of list) {
+  const placed = [] // pick order: new songs, moved entries, swapped entries (keep their id)
+  const swaps = []
+  for (const p of plan) {
+    if (p.move) {
+      placed.push(p.move)
+      lines.push(`MOVED UP: ${p.t.artist} — ${p.t.title} (it was already queued)`)
+      continue
+    }
     try {
-      const r = await resolveTrack(t, idMap)
-      if (r) {
-        found.push(r)
-        lines.push(
-          `OK (${tag[r.artistTitleHow]}): ${t.artist} — ${t.title} → "${r.ytTitle}" [${r.channel}] (${fmtTime(r.durationSec)})`
-        )
+      const r = await resolveTrack(p.t, idMap, { skipLibrary: !!p.swap })
+      if (!r) {
+        lines.push(`NOT FOUND: ${p.t.artist} — ${p.t.title} (query: ${p.t.search_query})`)
+        continue
+      }
+      const clash = uploadClash(r, p.t, ctx, placed, p.swap)
+      if (clash) {
+        refused++
+        lines.push(`NOT ADDED: ${p.t.artist} — ${p.t.title} (${clash})`)
+        continue
+      }
+      const how = `(${tag[r.artistTitleHow]}): ${p.t.artist} — ${p.t.title} → "${r.ytTitle}" [${r.channel}] (${fmtTime(r.durationSec)})`
+      if (p.swap) {
+        const fixed = { ...r, id: p.swap.id }
+        swaps.push(fixed)
+        if (mode === 'play_next') placed.push(fixed)
+        lines.push(`UPLOAD SWAPPED ${how}`)
       } else {
-        lines.push(`NOT FOUND: ${t.artist} — ${t.title} (query: ${t.search_query})`)
+        placed.push(r)
+        lines.push(`OK ${how}`)
       }
     } catch (e) {
       if (e instanceof SearchError && e.code === 'quota') {
         lines.push(
-          `SEARCH QUOTA EXHAUSTED — no more searches today. ${found.length} resolved so far. You can still queue tracks from the library or with confident video_ids.`
+          `SEARCH QUOTA EXHAUSTED — no more searches today. ${placed.length} resolved so far. You can still queue songs from library_fresh or with confident video_ids.`
         )
         break
       }
-      lines.push(`ERROR searching "${t.search_query}": ${e.message}`)
+      lines.push(`ERROR searching "${p.t.search_query}": ${e.message}`)
     }
   }
-  if (found.length) {
-    engine.queueTracks(found, mode)
-    const mins = Math.round(found.reduce((a, t) => a + (t.durationSec || 210), 0) / 60)
-    pushChat('event', `🎵 ${mode === 'replace_upcoming' ? 'Rebuilt queue with' : 'Queued'} ${found.length} track${found.length > 1 ? 's' : ''} · ~${mins} min`)
+
+  if (swaps.length) engine.setQueue((q) => q.map((e) => swaps.find((x) => x.id === e.id) || e))
+  let added = []
+  if (placed.length) {
+    added = mode === 'play_next' ? engine.placeNext(placed) : engine.queueTracks(placed, mode)
+    lines.push(...spacingNotes(new Set(added.map((t) => t.id))))
   }
-  return `Queued ${found.length}/${tracks.length} (mode: ${mode}).\n${lines.join('\n')}`
+  if (added.length || swaps.length) {
+    const mins = Math.round(added.reduce((a, t) => a + (t.durationSec || 210), 0) / 60)
+    const verb = mode === 'replace_upcoming' ? 'Rebuilt queue with' : mode === 'play_next' ? 'Slotted next:' : 'Queued'
+    const blocked = refused ? ` · ${refused} repeat${refused > 1 ? 's' : ''} blocked` : ''
+    pushChat(
+      'event',
+      added.length
+        ? `🎵 ${verb} ${added.length} track${added.length > 1 ? 's' : ''} · ~${mins} min${blocked}`
+        : `🎵 Swapped ${swaps.length} upload${swaps.length > 1 ? 's' : ''}${blocked}`
+    )
+  }
+  const refill = refused ? ` ${refused} not added — replace them with fresh picks so the queue stays full.` : ''
+  return `Queued ${added.length}/${tracks.length} (mode: ${mode}).${refill}\n${lines.join('\n')}`
 }
 
 async function execPlayNow(input) {
+  const s = S()
+  const ctx = {
+    mode: 'play_next',
+    aired: s.playLog,
+    onDecks: [s.decks.A.track, s.decks.B.track].filter(Boolean),
+    queued: s.queue,
+    taken: [],
+  }
+  const v = vet(input, ctx)
+  if (v.skip) {
+    return `NOT PLAYED: ${input.artist} — ${input.title} (${v.skip}). Pick something fresh — or, if the host asked for this exact song, send it again with requested_by_host.`
+  }
   try {
-    const idMap = await verifyIdsFor([input])
-    const r = await resolveTrack(input, idMap)
-    if (!r) return `NOT FOUND: ${input.artist} — ${input.title}`
-    engine.playNow(r)
-    pushChat('event', `▶️ Now playing: ${r.artist} — ${r.title}`)
-    return `Now crossfading into "${r.ytTitle}" [${r.channel}].`
+    let track = v.move
+    if (!track) {
+      const idMap = await verifyIds(needsIdCheck(input, v) ? [input] : [])
+      const r = await resolveTrack(input, idMap, { skipLibrary: !!v.swap })
+      if (!r) return `NOT FOUND: ${input.artist} — ${input.title}`
+      const clash = uploadClash(r, input, ctx, [], v.swap)
+      if (clash) return `NOT PLAYED: ${input.artist} — ${input.title} (${clash}).`
+      track = v.swap ? { ...r, id: v.swap.id } : r
+    }
+    engine.playNow(track)
+    pushChat('event', `▶️ Now playing: ${track.artist} — ${track.title}`)
+    return `Now crossfading into "${track.ytTitle || track.title}"${track.channel ? ` [${track.channel}]` : ''}.`
   } catch (e) {
     return `ERROR: ${e.message}`
   }
@@ -594,7 +790,7 @@ async function executeTool(name, input) {
 
 let inFlight = false
 
-export async function sendToDJ(text, { auto = false } = {}) {
+export async function sendToDJ(text, { auto = false, note } = {}) {
   const s = S()
   if (!s.settings.anthropicKey) {
     pushChat('error', 'No Anthropic API key yet — open Settings (gear icon) to add one. That key is the DJ brain.')
@@ -608,7 +804,7 @@ export async function sendToDJ(text, { auto = false } = {}) {
   set({ aiBusy: true })
 
   if (auto) {
-    pushChat('event', '🤖 Queue running low — DJ is topping up the set')
+    pushChat('event', note || '🤖 Queue running low — DJ is topping up the set')
   } else {
     pushChat('user', text)
   }
@@ -729,9 +925,24 @@ export function autoRefill() {
   const n = S().queue.length
   const need = Math.max(4, 12 - n)
   return sendToDJ(
-    `[AUTO] The upcoming queue is down to ${n} track${n === 1 ? '' : 's'}. Top it up with ${need} more in the current vibe so at least 10 stay queued.`,
+    `[AUTO] The upcoming queue is down to ${n} song${n === 1 ? '' : 's'}. Add ${need} fresh ones that carry the set's arc forward — check played_this_set, host_signals and peak_run_min first.`,
     { auto: true }
   )
+}
+
+// Two early skips within a few minutes: a working DJ would already be
+// changing course, so the DJ gets a turn to rework the next songs.
+let lastCourseCorrection = 0
+export function maybeCourseCorrect() {
+  const s = S()
+  const early = s.signals.filter((x) => x.type === 'skipped' && Date.now() - x.at < 10 * 60000)
+  if (early.length < 2 || !s.settings.anthropicKey || s.aiBusy || inFlight) return
+  if (Date.now() - lastCourseCorrection < 10 * 60000) return
+  lastCourseCorrection = Date.now()
+  sendToDJ(
+    '[AUTO] The host skipped two songs early in the last few minutes, so that lane is not landing. Rework the next few slots now (play_next or replace_upcoming) toward what has been working tonight.',
+    { auto: true, note: '🤖 Two early skips — DJ is reworking the next songs' }
+  ).catch(() => {})
 }
 
 const brainClient = () =>

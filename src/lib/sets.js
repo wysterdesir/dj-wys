@@ -17,11 +17,20 @@ const newSetObj = (name) => ({
   startedAt: Date.now(),
 })
 
-// Everything that has actually PLAYED this set: history + what's on air now.
-// After a reload the decks are empty, so the persisted lastNowPlaying
-// snapshot stands in for the song that was airing when the page closed.
+// Everything that has actually PLAYED this set, in order. The play log
+// records each song as it goes live, so it already includes what's on air
+// and survives reloads uncapped (the deck history keeps only the last 80).
 export function snapshotTracks() {
   const s = useStore.getState()
+  if (s.playLog.length) {
+    return s.playLog.map(({ artist, title, durationSec, energy, videoId }) => ({
+      artist,
+      title,
+      durationSec,
+      energy,
+      videoId,
+    }))
+  }
   const decksEmpty = !s.decks.A.track && !s.decks.B.track
   const act = s.decks[s.active].track || (decksEmpty ? s.lastNowPlaying : null)
   return [...s.history, ...(act ? [act] : [])].map((t) => ({
@@ -53,6 +62,8 @@ function resetLive(name) {
   useStore.setState((s) => ({
     queue: [],
     history: [],
+    playLog: [],
+    signals: [],
     chat: [],
     apiHistory: [],
     chatEpoch: (s.chatEpoch || 0) + 1, // invalidate any in-flight DJ loop
@@ -107,7 +118,7 @@ export function initSetLifecycle(maxIdleHours = 8) {
     return
   }
   const idleMs = Date.now() - (s.lastActiveAt || 0)
-  const hasContent = s.history.length > 0 || s.queue.length > 0
+  const hasContent = s.playLog.length > 0 || s.history.length > 0 || s.queue.length > 0
   if (s.lastActiveAt && hasContent && idleMs > maxIdleHours * 3600 * 1000) {
     const rec = archiveCurrent(s.lastActiveAt) // it ended when music last played
     resetLive()

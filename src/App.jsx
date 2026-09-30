@@ -195,7 +195,7 @@ export default function App() {
     }
     useStore.setState((s) => ({ queue: dedupe(s.queue), history: dedupe(s.history) }))
     const s = useStore.getState()
-    seedLibrary([...s.queue, ...s.history, ...s.pastSets.flatMap((r) => r.tracks)])
+    seedLibrary([...s.queue, ...s.playLog, ...s.pastSets.flatMap((r) => r.tracks)])
   }, [])
 
   // transport keyboard shortcuts (ignored while typing)
